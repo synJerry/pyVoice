@@ -1,0 +1,39 @@
+[project]
+name = "voice-clone-tts"
+version = "0.1.0"
+description = "Speaker separation and voice cloning with Coqui TTS"
+requires-python = ">=3.8"
+dependencies = [
+    "librosa>=0.10.0",
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
+    "scikit-learn>=1.0.0",
+    "soundfile>=0.12.0",
+    "matplotlib>=3.5.0",
+    "pydub>=0.25.0",
+    "ffmpeg-python>=0.2.0",
+    # Optional dependencies for different backends
+    "coqui-tts>=0.22.0; extra == 'coqui'",
+    "torch>=1.13.0; extra == 'coqui'",
+    "torchaudio>=0.13.0; extra == 'coqui'",
+    "pyannote.audio>=3.1.0; extra == 'huggingface'",
+    "speechbrain>=0.5.0; extra == 'huggingface'",
+    "pyttsx3>=2.90; extra == 'local'",
+]
+
+[project.optional-dependencies]
+coqui = ["coqui-tts>=0.22.0", "torch>=1.13.0", "torchaudio>=0.13.0"]
+huggingface = ["pyannote.audio>=3.1.0", "speechbrain>=0.5.0"]
+local = ["pyttsx3>=2.90"]
+full = ["coqui-tts>=0.22.0", "torch>=1.13.0", "torchaudio>=0.13.0", "pyannote.audio>=3.1.0", "speechbrain>=0.5.0", "pyttsx3>=2.90"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
