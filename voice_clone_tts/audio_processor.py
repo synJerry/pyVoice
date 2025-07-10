@@ -5,7 +5,6 @@ from scipy.signal import butter, filtfilt
 from typing import Tuple, Optional
 import os
 
-
 class AudioProcessor:
     """
     Audio processing utilities for voice cloning pipeline.
@@ -87,3 +86,9 @@ class AudioProcessor:
             audio = AudioProcessor._apply_highpass_filter(audio, sr, cutoff=100)
         
         return audio
+
+preprocessed_audio = AudioProcessor.preprocess_audio(
+    args.audio_file, 
+    output_file=os.path.join(args.output_dir, "preprocessed.wav"),
+    auto_convert=True
+)
