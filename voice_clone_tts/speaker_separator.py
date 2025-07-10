@@ -229,6 +229,6 @@ class SpeakerSeparator:
         os.makedirs(output_dir, exist_ok=True)
         
         for speaker_id, audio in speaker_audio.items():
-            output_path = os.path.join(output_dir, f"speaker_{speaker_id}.wav")
+            output_path = os.path.join(output_dir, f"{speaker_id}.wav")
             sf.write(output_path, audio, sr)
             print(f"Saved {speaker_id} audio to {output_path}")

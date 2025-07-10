@@ -78,8 +78,8 @@ class VoiceCloner:
             raise ImportError("Coqui TTS not available. Install with: pip install coqui-tts")
         
         if model_name is None:
-            # Use a lightweight model for CPU processing
-            model_name = "tts_models/en/ljspeech/tacotron2-DDC"
+            # Use XTTS model for voice cloning capability
+            model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
         
         try:
             print(f"Loading Coqui TTS model: {model_name}")
@@ -94,13 +94,13 @@ class VoiceCloner:
                 
         except Exception as e:
             print(f"Error loading Coqui TTS model {model_name}: {e}")
-            # Fallback to basic model
+            # Fallback to basic XTTS model
             try:
-                fallback_model = "tts_models/en/ljspeech/tacotron2-DDC"
+                fallback_model = "tts_models/multilingual/multi-dataset/xtts_v2"
                 print(f"Trying fallback model: {fallback_model}")
                 self.tts = TTS(fallback_model, progress_bar=False).to(self.device)
                 self.model_name = fallback_model
-                self.supports_voice_cloning = False
+                self.supports_voice_cloning = True
             except Exception as e2:
                 print(f"Error loading fallback model: {e2}")
                 raise RuntimeError("Could not load any Coqui TTS model")
@@ -162,9 +162,18 @@ class VoiceCloner:
             raise RuntimeError("Coqui TTS model not available")
         
         try:
-            if self.supports_voice_cloning and reference_audio:
+            if self.supports_voice_cloning and reference_audio and os.path.exists(reference_audio):
                 # Voice cloning with reference audio
                 print(f"Cloning voice from {reference_audio}")
+                
+                # Check if reference audio has sufficient duration
+                import librosa
+                ref_audio, _ = librosa.load(reference_audio, sr=None)
+                duration = len(ref_audio) / 16000  # Assuming 16kHz
+                
+                if duration < 3.0:  # Need at least 3 seconds for good voice cloning
+                    print(f"Warning: Reference audio is only {duration:.1f}s. Voice cloning may be poor quality.")
+                
                 self.tts.tts_to_file(
                     text=text,
                     speaker_wav=reference_audio,
@@ -173,6 +182,10 @@ class VoiceCloner:
                 )
             else:
                 # Standard TTS without voice cloning
+                if reference_audio and not os.path.exists(reference_audio):
+                    print(f"Warning: Reference audio file not found: {reference_audio}")
+                if not self.supports_voice_cloning:
+                    print("Warning: Current model doesn't support voice cloning")
                 print("Generating speech with standard TTS")
                 wav = self.tts.tts(text=text)
                 

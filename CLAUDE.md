@@ -32,14 +32,16 @@ uv pip install -r ./pyproject.toml --all-extras
 
 ### Running the Application
 ```bash
-# Basic usage with CPU processing
-python -m voice_clone_tts input_audio.webm --method local --backend coqui --use-cpu
+# Basic usage with CPU processing (recommended for voice cloning)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
 
 # With custom output directory
-python -m voice_clone_tts input_audio.wav --output-dir my_output --method local --backend auto
+python -m voice_clone_tts input_audio.wav --output-dir my_output --method local --backend coqui
 
 # Using HuggingFace models (requires token)
-python -m voice_clone_tts input_audio.mp3 --method huggingface --hf-token YOUR_TOKEN --backend coqui
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
+
+# Note: Use WAV files for best results. WebM/MP4 files require ffmpeg for conversion
 ```
 
 ### Development Commands

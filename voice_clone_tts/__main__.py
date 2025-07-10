@@ -57,7 +57,7 @@ def main():
     # Get reference audio files
     reference_files = []
     for speaker_id in speaker_audio.keys():
-        ref_file = os.path.join(speaker_dir, f"speaker_{speaker_id}.wav")
+        ref_file = os.path.join(speaker_dir, f"{speaker_id}.wav")
         reference_files.append(ref_file)
     
     # Generate synthetic speech
