@@ -21,5 +21,9 @@ python -m voice_clone_tts Syn.webm --method local --backend coqui --use-cpu
 ## Docker attempt
 From https://docs.coqui.ai/en/latest/docker_images.html
 ```bash
-docker run --rm -it -p 5002:5002 --entrypoint /bin/bash ghcr.io/coqui-ai/tts-cpu
+# Use maintained fork "github.com/idiap/coqui-ai-TTS" that has several fixes
+#docker pull ghcr.io/coqui-ai/tts-cpu --platform linux/amd64
+#docker run --rm -it -p 5002:5002 --entrypoint /bin/bash ghcr.io/coqui-ai/tts-cpu
+docker pull ghcr.io/idiap/coqui-tts-cpu --platform linux/amd64
+docker run --rm -it -p 5002:5002 --entrypoint /bin/bash ghcr.io/idiap/coqui-tts-cpu
 ```
