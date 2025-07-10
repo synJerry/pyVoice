@@ -26,4 +26,9 @@ From https://docs.coqui.ai/en/latest/docker_images.html
 #docker run --rm -it -p 5002:5002 --entrypoint /bin/bash ghcr.io/coqui-ai/tts-cpu
 docker pull ghcr.io/idiap/coqui-tts-cpu --platform linux/amd64
 docker run --rm -it -p 5002:5002 --entrypoint /bin/bash ghcr.io/idiap/coqui-tts-cpu
+# From within docker container
+tts --list_models #To get the list of available models
+# Start a server
+python3 TTS/server/server.py --model_name tts_models/en/vctk/vits
+# 148MB Model downloads, but why is ths container so big (12GB) if the model doesn't already exist locally?
 ```
