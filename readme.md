@@ -15,7 +15,8 @@ uv pip install -r .\pyproject.toml --all-extras
 
 Run
 ```powershell
-python -m voice_clone_tts Syn.webm --method local --backend coqui --use-cpu
+#python -m voice_clone_tts Syn.webm --method local --backend coqui --use-cpu
+python -m voice_clone_tts Syn.wav --method local --backend coqui --use-cpu
 ```
 
 ## Docker attempt

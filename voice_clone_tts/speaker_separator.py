@@ -139,13 +139,13 @@ class SpeakerSeparator:
             spectral_rolloff = librosa.feature.spectral_rolloff(y=window, sr=sr)
             zero_crossing_rate = librosa.feature.zero_crossing_rate(window)
             
-            # Combine features
+            # Combine features (ensure all are 1D arrays)
             combined_features = np.concatenate([
                 np.mean(mfccs, axis=1),
                 np.std(mfccs, axis=1),
-                np.mean(spectral_centroid),
-                np.mean(spectral_rolloff),
-                np.mean(zero_crossing_rate)
+                np.atleast_1d(np.mean(spectral_centroid)),
+                np.atleast_1d(np.mean(spectral_rolloff)),
+                np.atleast_1d(np.mean(zero_crossing_rate))
             ])
             
             features.append(combined_features)

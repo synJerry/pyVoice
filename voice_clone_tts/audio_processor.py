@@ -4,6 +4,8 @@ import soundfile as sf
 from scipy.signal import butter, filtfilt
 from typing import Tuple, Optional
 import os
+import tempfile
+import ffmpeg
 
 class AudioProcessor:
     """
@@ -12,7 +14,7 @@ class AudioProcessor:
     
     @staticmethod
     def preprocess_audio(audio_file: str, target_sr: int = 16000, 
-                        output_file: Optional[str] = None) -> str:
+                        output_file: Optional[str] = None, auto_convert: bool = True) -> str:
         """
         Preprocess audio file for speaker separation.
         
@@ -20,12 +22,46 @@ class AudioProcessor:
             audio_file: Input audio file
             target_sr: Target sample rate
             output_file: Output file path (optional)
+            auto_convert: Whether to automatically convert from other formats
             
         Returns:
             Path to preprocessed audio file
         """
-        # Load audio
-        audio, sr = librosa.load(audio_file, sr=target_sr)
+        # Check if we need to convert the audio format
+        input_format = AudioProcessor.detect_audio_format(audio_file)
+        
+        if auto_convert and input_format.lower() not in ['wav', 'mp3', 'flac', 'ogg']:
+            # Check if ffmpeg is available
+            if not AudioProcessor.check_ffmpeg_available():
+                raise RuntimeError(f"ffmpeg is required to convert {input_format} files. Please install ffmpeg or convert the file to WAV/MP3 format manually.")
+            
+            # Convert to temporary WAV file first
+            temp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_wav.close()
+            
+            try:
+                print(f"Converting {input_format} to WAV format...")
+                # Use ffmpeg to convert to WAV
+                stream = ffmpeg.input(audio_file)
+                stream = ffmpeg.output(stream, temp_wav.name, acodec='pcm_s16le', ar=target_sr)
+                ffmpeg.run(stream, overwrite_output=True, quiet=True)
+                
+                # Load the converted audio
+                audio, sr = librosa.load(temp_wav.name, sr=target_sr)
+                
+                # Clean up temporary file
+                os.unlink(temp_wav.name)
+                
+            except Exception as e:
+                # Clean up temporary file on error
+                try:
+                    os.unlink(temp_wav.name)
+                except:
+                    pass
+                raise RuntimeError(f"Failed to convert audio format {input_format}: {e}")
+        else:
+            # Load audio directly
+            audio, sr = librosa.load(audio_file, sr=target_sr)
         
         # Normalize audio
         audio = librosa.util.normalize(audio)
@@ -86,9 +122,32 @@ class AudioProcessor:
             audio = AudioProcessor._apply_highpass_filter(audio, sr, cutoff=100)
         
         return audio
-
-preprocessed_audio = AudioProcessor.preprocess_audio(
-    args.audio_file, 
-    output_file=os.path.join(args.output_dir, "preprocessed.wav"),
-    auto_convert=True
-)
+    
+    @staticmethod
+    def detect_audio_format(audio_file: str) -> str:
+        """
+        Detect the format of an audio file.
+        
+        Args:
+            audio_file: Path to audio file
+            
+        Returns:
+            File format extension (e.g., 'wav', 'mp3', 'webm')
+        """
+        return os.path.splitext(audio_file)[1].lower().lstrip('.')
+    
+    @staticmethod
+    def check_ffmpeg_available() -> bool:
+        """
+        Check if ffmpeg is available on the system.
+        
+        Returns:
+            True if ffmpeg is available, False otherwise
+        """
+        try:
+            ffmpeg.probe('')
+        except ffmpeg.Error:
+            return True  # ffmpeg is available but got an error (expected)
+        except FileNotFoundError:
+            return False  # ffmpeg not found
+        return True
