@@ -303,30 +303,29 @@ class VoiceCloner:
                 print(f"Warning: Reference audio not found: {ref_audio}")
                 continue
             
-            # Create speaker-specific directory
-            speaker_id = f"speaker_{i}"
-            speaker_dir = os.path.join(model_dir, speaker_id)
-            os.makedirs(speaker_dir, exist_ok=True)
+            # Extract speaker_id from filename (e.g., "speaker_0.wav" -> "speaker_0")
+            base_name = os.path.splitext(os.path.basename(ref_audio))[0]
+            speaker_id = base_name if base_name.startswith("speaker_") else f"speaker_{i}"
             
-            # Copy reference audio to model directory
-            model_audio_path = os.path.join(speaker_dir, "reference.wav")
+            # Copy reference audio to model directory with consistent naming
+            model_audio_path = os.path.join(model_dir, f"{speaker_id}_reference.wav")
             shutil.copy2(ref_audio, model_audio_path)
             
             # Save model metadata
             metadata = {
                 "speaker_id": speaker_id,
-                "reference_audio": "reference.wav",
+                "reference_audio": f"{speaker_id}_reference.wav",
                 "backend": self.backend,
                 "model_name": getattr(self, 'model_name', 'unknown'),
                 "created_at": __import__('datetime').datetime.now().isoformat()
             }
             
-            metadata_path = os.path.join(speaker_dir, "metadata.json")
+            metadata_path = os.path.join(model_dir, f"{speaker_id}_metadata.json")
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            voice_models[speaker_id] = speaker_dir
-            print(f"Saved voice model for {speaker_id} at {speaker_dir}")
+            voice_models[speaker_id] = model_audio_path
+            print(f"Saved voice model for {speaker_id} at {model_audio_path}")
         
         return voice_models
     
@@ -346,20 +345,22 @@ class VoiceCloner:
             print(f"Voice model directory not found: {model_dir}")
             return voice_models
         
-        for speaker_dir in os.listdir(model_dir):
-            speaker_path = os.path.join(model_dir, speaker_dir)
-            if not os.path.isdir(speaker_path):
-                continue
-            
-            metadata_path = os.path.join(speaker_path, "metadata.json")
-            ref_audio_path = os.path.join(speaker_path, "reference.wav")
-            
-            if os.path.exists(metadata_path) and os.path.exists(ref_audio_path):
+        # Look for metadata files in the flat directory structure
+        for file_name in os.listdir(model_dir):
+            if file_name.endswith("_metadata.json"):
+                metadata_path = os.path.join(model_dir, file_name)
+                
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)
                 
-                voice_models[metadata["speaker_id"]] = ref_audio_path
-                print(f"Loaded voice model for {metadata['speaker_id']}")
+                speaker_id = metadata["speaker_id"]
+                ref_audio_path = os.path.join(model_dir, metadata["reference_audio"])
+                
+                if os.path.exists(ref_audio_path):
+                    voice_models[speaker_id] = ref_audio_path
+                    print(f"Loaded voice model for {speaker_id}")
+                else:
+                    print(f"Warning: Reference audio not found for {speaker_id}: {ref_audio_path}")
         
         return voice_models
     

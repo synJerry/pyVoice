@@ -38,7 +38,7 @@ uv pip install -r ./pyproject.toml --all-extras
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --save-models
 
 # This will create voice models in the 'output/voice_models' directory
-# Models are saved as: output/voice_models/speaker_0/, output/voice_models/speaker_1/, etc.
+# Models are saved as: output/voice_models/speaker_0_reference.wav, speaker_0_metadata.json, etc.
 ```
 
 #### Fast generation (using saved models):
