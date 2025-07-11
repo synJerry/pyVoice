@@ -11,7 +11,7 @@ This is a voice cloning TTS (Text-to-Speech) system that separates speakers from
 The codebase is organized into three main components:
 
 1. **AudioProcessor** (`audio_processor.py`): Handles audio preprocessing, format conversion, noise reduction, and audio quality enhancement
-2. **SpeakerSeparator** (`speaker_separator.py`): Separates speakers from audio using either local spectral clustering or HuggingFace pyannote models
+2. **SpeakerSeparator** (`speaker_separator.py`): Separates speakers from audio using local spectral clustering, HuggingFace pyannote models, or AWS Transcribe diarization
 3. **VoiceCloner** (`voice_cloner.py`): Clones voices using various TTS backends (Coqui TTS, pyttsx3, espeak)
 
 The main entry point is `__main__.py` which orchestrates the complete pipeline: audio preprocessing → speaker separation → voice cloning.
@@ -64,6 +64,33 @@ python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_T
 # Clean previous output files before processing (preserves directory structure)
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --clean
 
+# Suppress SpeechBrain deprecation warnings
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui --suppress-warnings
+
+# Show detailed speaker information
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --show-speaker-info
+
+# Specify number of expected speakers (default is 2)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --num-speakers 3
+
+# For conference calls or meetings with multiple speakers
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui --num-speakers 5
+
+# Use text from transcript.txt file instead of default sample text
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --use-transcript
+
+# Combine transcript with other options
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui --use-transcript --num-speakers 3
+
+# Use AWS Transcribe diarization for highly accurate speaker separation
+python -m voice_clone_tts input_audio.wav --aws-transcribe transcribe_output.json --backend coqui --use-cpu
+
+# AWS Transcribe with custom text
+python -m voice_clone_tts input_audio.wav --aws-transcribe transcribe_output.json --text "Your custom text here" --backend coqui --use-cpu
+
+# AWS Transcribe with voice model saving
+python -m voice_clone_tts input_audio.wav --aws-transcribe transcribe_output.json --backend coqui --use-cpu --save-models
+
 # Note: Use WAV files for best results. WebM/MP4 files require ffmpeg for conversion
 ```
 
@@ -93,6 +120,7 @@ pip install -e .
 ### Speaker Separation Methods
 - **local**: Uses spectral clustering on MFCC features, spectral centroid, rolloff, and zero-crossing rate
 - **huggingface**: Uses pyannote.audio models for more accurate speaker diarization
+- **aws**: Uses AWS Transcribe JSON output for professional-grade speaker diarization (highest accuracy)
 
 ### Optional Dependencies
 The project uses optional dependencies for different backends:
@@ -109,8 +137,32 @@ All backends have fallback mechanisms that generate silent audio files when TTS 
 - `pyproject.toml`: Main configuration with optional dependencies
 - `setup.py`: Legacy setup file (pyproject.toml is preferred)
 - `output/`: Default directory for generated audio files and voice models
+- `transcript.txt`: Optional text file for custom synthesis text (use with `--use-transcript`)
 - Audio files are processed in WAV format at 16kHz sample rate
 - Generated files follow naming convention: `speaker_N_synthesis.wav`
+
+## Text Input Options
+
+The system supports multiple ways to provide text for synthesis:
+
+1. **Default sample text**: Built-in placeholder text (used if no other option specified)
+2. **Custom text via --text**: `--text "Your custom text here"`
+3. **Transcript file**: `--use-transcript` (reads from `transcript.txt` in current directory)
+
+**Priority order**: `--use-transcript` > `--text` > default sample text
+
+**Transcript file format**:
+- File name: `transcript.txt` (must be in current directory)
+- Encoding: UTF-8 recommended
+- Content: Plain text, any length
+- The entire file content will be used for synthesis
+
+**AWS Transcribe JSON format** (for speaker diarization only):
+- Must be valid AWS Transcribe output with speaker diarization enabled
+- Required structure: `results.speaker_labels.segments[]`
+- Supports automatic speaker count detection (no need for `--num-speakers`)
+- Used only for speaker separation, not text synthesis
+- Example AWS CLI command: `aws transcribe start-transcription-job --transcription-job-name my-job --media MediaFileUri=s3://bucket/audio.wav --media-format wav --language-code en-US --settings ShowSpeakerLabels=true,MaxSpeakerLabels=10`
 
 ## Development Notes
 

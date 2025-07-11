@@ -12,5 +12,17 @@ wheels/
 test.py
 
 # Sound Files
-*.webm
+*.mp3
 *.wav
+*.webm
+
+# Output Files
+#output/
+metadata.json
+
+# Input Files
+transcribe.*
+transcribe*json
+
+# Claude Code settings
+.claude/

@@ -32,12 +32,60 @@ def main():
                        help="Directory to save/load voice models (defaults to output_dir/voice_models)")
     parser.add_argument("--clean", action="store_true",
                        help="Delete existing files in output directory before processing (preserves subdirectories)")
+    parser.add_argument("--suppress-warnings", action="store_true",
+                       help="Suppress SpeechBrain deprecation and other non-critical warnings")
+    parser.add_argument("--show-speaker-info", action="store_true",
+                       help="Show detailed information about detected speakers")
+    parser.add_argument("--num-speakers", type=int, default=2,
+                       help="Expected number of speakers in the audio (default: 2)")
+    parser.add_argument("--use-transcript", action="store_true",
+                       help="Read text from transcript.txt file (overrides --text)")
+    parser.add_argument("--aws-transcribe", type=str, metavar="JSON_FILE",
+                       help="Use AWS Transcribe JSON output for speaker diarization (overrides --method)")
     
     args = parser.parse_args()
     
     # Validate arguments
     if not args.load_models and not args.audio_file:
         parser.error("audio_file is required unless --load-models is specified")
+    
+    # AWS Transcribe validation is handled automatically
+    
+    # Validate number of speakers (unless using AWS Transcribe which detects automatically)
+    if not args.aws_transcribe:
+        if args.num_speakers < 1:
+            parser.error("--num-speakers must be at least 1")
+        elif args.num_speakers > 10:
+            print(f"Warning: {args.num_speakers} speakers is quite high. Speaker separation accuracy may decrease with many speakers.")
+        elif args.num_speakers == 1:
+            print("Note: With 1 speaker, the entire audio will be treated as a single speaker.")
+    
+    # Handle transcript file loading
+    if args.use_transcript:
+        try:
+            with open("transcript.txt", "r", encoding="utf-8") as f:
+                transcript_text = f.read().strip()
+            
+            if transcript_text:
+                args.text = transcript_text
+                print("✅ Loaded text from transcript.txt")
+                print(f"📄 Text length: {len(transcript_text)} characters")
+            else:
+                print("⚠️  Warning: transcript.txt is empty, using default text")
+                
+        except FileNotFoundError:
+            print("⚠️  Warning: transcript.txt not found, using default text")
+        except UnicodeDecodeError:
+            print("⚠️  Warning: Could not decode transcript.txt (try UTF-8 encoding), using default text")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not read transcript.txt: {e}, using default text")
+    
+    # Handle warning suppression
+    if args.suppress_warnings:
+        import warnings
+        warnings.filterwarnings("ignore", message=".*speechbrain.pretrained.*deprecated.*")
+        warnings.filterwarnings("ignore", message=".*speechbrain.inference.*")
+        warnings.filterwarnings("ignore", category=UserWarning, module="speechbrain")
     
     # Handle clean flag
     if args.clean and os.path.exists(args.output_dir):
@@ -93,11 +141,39 @@ def main():
         
         # Step 2: Separate speakers
         print("Separating speakers...")
-        separator = SpeakerSeparator(
-            method=args.method,
-            huggingface_token=args.hf_token
-        )
-        speaker_audio = separator.separate_speakers(preprocessed_audio, num_speakers=2)
+        
+        # Determine separation method
+        if args.aws_transcribe:
+            # Use AWS Transcribe diarization
+            separator = SpeakerSeparator(method="aws", aws_transcribe_file=args.aws_transcribe)
+            print(f"🎯 Using AWS Transcribe diarization from {args.aws_transcribe}")
+            speaker_audio = separator.separate_speakers(preprocessed_audio)
+        else:
+            # Use traditional methods
+            separator = SpeakerSeparator(
+                method=args.method,
+                huggingface_token=args.hf_token
+            )
+            
+            # Recommend better method if using local
+            if args.method == "local":
+                print("NOTE: For better speaker separation quality, consider using:")
+                print("  --method huggingface --hf-token YOUR_TOKEN")
+                print("  This uses state-of-the-art neural models instead of basic clustering")
+            
+            print(f"Attempting to separate into {args.num_speakers} speaker(s)...")
+            speaker_audio = separator.separate_speakers(preprocessed_audio, num_speakers=args.num_speakers)
+        
+        # Show detailed speaker information if requested
+        if args.show_speaker_info:
+            print("\n📊 Detailed Speaker Analysis:")
+            speaker_info = separator.get_speaker_info(speaker_audio, sr=16000)
+            for speaker_id, info in speaker_info.items():
+                print(f"\n{speaker_id}:")
+                print(f"  Duration: {info['duration_seconds']:.2f} seconds")
+                print(f"  Samples: {info['samples']:,}")
+                print(f"  RMS Energy: {info['rms_energy']:.4f}")
+                print(f"  Relative Activity: {info['relative_activity']:.1%}")
         
         # Save separated audio
         speaker_dir = os.path.join(args.output_dir, "speakers")

@@ -16,7 +16,11 @@ uv pip install -r .\pyproject.toml --all-extras
 Run
 ```powershell
 #python -m voice_clone_tts Syn.webm --method local --backend coqui --use-cpu
-python -m voice_clone_tts Syn.wav --method local --backend coqui --use-cpu
+python -m voice_clone_tts "Syn.wav" --method local --backend coqui --use-cpu
+python -m voice_clone_tts "Syn.wav" --method local --backend coqui --use-cpu --clean --show-speaker-info
+python -m voice_clone_tts "Single.wav" --num-speakers 1 --method local --backend coqui --use-cpu --clean --show-speaker-info
+# If using AWS Transcribe output
+python -m voice_clone_tts "Syn.wav" --aws-transcript-text --aws-transcribe "transcribe.json" --backend coqui --use-cpu --clean
 ```
 
 ## Docker attempt

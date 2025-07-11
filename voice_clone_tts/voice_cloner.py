@@ -252,10 +252,103 @@ class VoiceCloner:
             sf.write(output_file, silent_audio.numpy(), 22050, subtype='PCM_16')
             return output_file
     
+    def _chunk_text(self, text: str, max_chars: int = 200) -> List[str]:
+        """
+        Split text into chunks that respect sentence boundaries and character limits.
+        
+        Args:
+            text: Text to split
+            max_chars: Maximum characters per chunk
+            
+        Returns:
+            List of text chunks
+        """
+        if len(text) <= max_chars:
+            return [text]
+        
+        # Split by sentences first
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        chunks = []
+        current_chunk = ""
+        
+        for sentence in sentences:
+            # If adding this sentence would exceed limit, start new chunk
+            if len(current_chunk) + len(sentence) + 1 > max_chars:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = sentence
+                else:
+                    # Single sentence is too long, split by words
+                    words = sentence.split()
+                    for word in words:
+                        if len(current_chunk) + len(word) + 1 > max_chars:
+                            if current_chunk:
+                                chunks.append(current_chunk.strip())
+                                current_chunk = word
+                            else:
+                                # Single word is too long, force split
+                                chunks.append(word[:max_chars])
+                                current_chunk = word[max_chars:]
+                        else:
+                            current_chunk += " " + word if current_chunk else word
+            else:
+                current_chunk += " " + sentence if current_chunk else sentence
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+
+    def _concatenate_audio_files(self, audio_files: List[str], output_file: str) -> str:
+        """
+        Concatenate multiple audio files into one.
+        
+        Args:
+            audio_files: List of audio file paths
+            output_file: Output file path
+            
+        Returns:
+            Path to concatenated audio file
+        """
+        import soundfile as sf
+        
+        combined_audio = []
+        sample_rate = None
+        
+        for audio_file in audio_files:
+            if os.path.exists(audio_file):
+                audio, sr = sf.read(audio_file)
+                if sample_rate is None:
+                    sample_rate = sr
+                elif sr != sample_rate:
+                    # Resample if needed
+                    import librosa
+                    audio = librosa.resample(audio, orig_sr=sr, target_sr=sample_rate)
+                
+                combined_audio.append(audio)
+                # Add small pause between chunks
+                pause = np.zeros(int(0.2 * sample_rate))  # 200ms pause
+                combined_audio.append(pause)
+        
+        if combined_audio:
+            final_audio = np.concatenate(combined_audio)
+            sf.write(output_file, final_audio, sample_rate, subtype='PCM_16')
+            
+            # Clean up temporary files
+            for temp_file in audio_files:
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+        
+        return output_file
+
     def batch_clone_voices(self, text: str, reference_audios: List[str], 
                           output_dir: str, language: str = "en") -> List[str]:
         """
-        Clone multiple voices with the same text.
+        Clone multiple voices with the same text, handling long text by chunking.
         
         Args:
             text: Text to synthesize
@@ -269,15 +362,48 @@ class VoiceCloner:
         os.makedirs(output_dir, exist_ok=True)
         output_files = []
         
+        # Check if text needs chunking (for Coqui TTS character limit)
+        max_chars = 200 if self.backend == "coqui" else 1000
+        text_chunks = self._chunk_text(text, max_chars)
+        
+        if len(text_chunks) > 1:
+            print(f"Text is {len(text)} characters, splitting into {len(text_chunks)} chunks")
+        
         for i, ref_audio in enumerate(reference_audios):
             output_file = os.path.join(output_dir, f"speaker_{i}_synthesis.wav")
             
-            if self.supports_voice_cloning:
-                self.clone_voice(text, ref_audio, output_file, language)
+            if len(text_chunks) == 1:
+                # Single chunk - process normally
+                if self.supports_voice_cloning:
+                    self.clone_voice(text, ref_audio, output_file, language)
+                else:
+                    voice_index = i % 5
+                    self.clone_voice(text, None, output_file, language, voice_index)
             else:
-                # Use different voice indices for pyttsx3
-                voice_index = i % 5  # Cycle through available voices
-                self.clone_voice(text, None, output_file, language, voice_index)
+                # Multiple chunks - process each and concatenate
+                chunk_files = []
+                temp_dir = os.path.join(output_dir, f"temp_speaker_{i}")
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                for j, chunk in enumerate(text_chunks):
+                    chunk_file = os.path.join(temp_dir, f"chunk_{j}.wav")
+                    
+                    if self.supports_voice_cloning:
+                        self.clone_voice(chunk, ref_audio, chunk_file, language)
+                    else:
+                        voice_index = i % 5
+                        self.clone_voice(chunk, None, chunk_file, language, voice_index)
+                    
+                    chunk_files.append(chunk_file)
+                
+                # Concatenate chunks
+                self._concatenate_audio_files(chunk_files, output_file)
+                
+                # Clean up temporary directory
+                try:
+                    shutil.rmtree(temp_dir)
+                except OSError:
+                    pass
             
             output_files.append(output_file)
         
@@ -367,7 +493,7 @@ class VoiceCloner:
     def generate_from_models(self, text: str, voice_models: Dict[str, str], 
                            output_dir: str, language: str = "en") -> List[str]:
         """
-        Generate speech using saved voice models.
+        Generate speech using saved voice models, handling long text by chunking.
         
         Args:
             text: Text to synthesize
@@ -381,11 +507,41 @@ class VoiceCloner:
         os.makedirs(output_dir, exist_ok=True)
         output_files = []
         
+        # Check if text needs chunking
+        max_chars = 200 if self.backend == "coqui" else 1000
+        text_chunks = self._chunk_text(text, max_chars)
+        
+        if len(text_chunks) > 1:
+            print(f"Text is {len(text)} characters, splitting into {len(text_chunks)} chunks")
+        
         for speaker_id, ref_audio_path in voice_models.items():
             output_file = os.path.join(output_dir, f"{speaker_id}_synthesis.wav")
             
             print(f"Generating speech for {speaker_id}...")
-            self.clone_voice(text, ref_audio_path, output_file, language)
+            
+            if len(text_chunks) == 1:
+                # Single chunk - process normally
+                self.clone_voice(text, ref_audio_path, output_file, language)
+            else:
+                # Multiple chunks - process each and concatenate
+                chunk_files = []
+                temp_dir = os.path.join(output_dir, f"temp_{speaker_id}")
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                for j, chunk in enumerate(text_chunks):
+                    chunk_file = os.path.join(temp_dir, f"chunk_{j}.wav")
+                    self.clone_voice(chunk, ref_audio_path, chunk_file, language)
+                    chunk_files.append(chunk_file)
+                
+                # Concatenate chunks
+                self._concatenate_audio_files(chunk_files, output_file)
+                
+                # Clean up temporary directory
+                try:
+                    shutil.rmtree(temp_dir)
+                except OSError:
+                    pass
+            
             output_files.append(output_file)
         
         return output_files
