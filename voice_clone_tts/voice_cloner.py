@@ -346,7 +346,7 @@ class VoiceCloner:
         return output_file
 
     def batch_clone_voices(self, text: str, reference_audios: List[str], 
-                          output_dir: str, language: str = "en") -> List[str]:
+                          output_dir: str, language: str = "en", output_format: str = "wav") -> List[str]:
         """
         Clone multiple voices with the same text, handling long text by chunking.
         
@@ -355,6 +355,7 @@ class VoiceCloner:
             reference_audios: List of reference audio files
             output_dir: Output directory
             language: Language code
+            output_format: Output audio format ("wav" or "mp3")
             
         Returns:
             List of generated audio file paths
@@ -370,15 +371,17 @@ class VoiceCloner:
             print(f"Text is {len(text)} characters, splitting into {len(text_chunks)} chunks")
         
         for i, ref_audio in enumerate(reference_audios):
-            output_file = os.path.join(output_dir, f"speaker_{i}_synthesis.wav")
+            # Always generate WAV first, then convert if needed
+            wav_output_file = os.path.join(output_dir, f"speaker_{i}_synthesis.wav")
+            final_output_file = os.path.join(output_dir, f"speaker_{i}_synthesis.{output_format}")
             
             if len(text_chunks) == 1:
                 # Single chunk - process normally
                 if self.supports_voice_cloning:
-                    self.clone_voice(text, ref_audio, output_file, language)
+                    self.clone_voice(text, ref_audio, wav_output_file, language)
                 else:
                     voice_index = i % 5
-                    self.clone_voice(text, None, output_file, language, voice_index)
+                    self.clone_voice(text, None, wav_output_file, language, voice_index)
             else:
                 # Multiple chunks - process each and concatenate
                 chunk_files = []
@@ -397,7 +400,7 @@ class VoiceCloner:
                     chunk_files.append(chunk_file)
                 
                 # Concatenate chunks
-                self._concatenate_audio_files(chunk_files, output_file)
+                self._concatenate_audio_files(chunk_files, wav_output_file)
                 
                 # Clean up temporary directory
                 try:
@@ -405,7 +408,19 @@ class VoiceCloner:
                 except OSError:
                     pass
             
-            output_files.append(output_file)
+            # Convert to MP3 if requested
+            if output_format == "mp3":
+                from .audio_processor import AudioProcessor
+                AudioProcessor.convert_to_mp3(wav_output_file, final_output_file)
+                # Remove the temporary WAV file
+                try:
+                    os.remove(wav_output_file)
+                except OSError:
+                    pass
+            else:
+                final_output_file = wav_output_file
+            
+            output_files.append(final_output_file)
         
         return output_files
     
@@ -491,7 +506,7 @@ class VoiceCloner:
         return voice_models
     
     def generate_from_models(self, text: str, voice_models: Dict[str, str], 
-                           output_dir: str, language: str = "en") -> List[str]:
+                           output_dir: str, language: str = "en", output_format: str = "wav") -> List[str]:
         """
         Generate speech using saved voice models, handling long text by chunking.
         
@@ -500,6 +515,7 @@ class VoiceCloner:
             voice_models: Dictionary mapping speaker IDs to reference audio paths
             output_dir: Output directory
             language: Language code
+            output_format: Output audio format ("wav" or "mp3")
             
         Returns:
             List of generated audio file paths
@@ -515,13 +531,15 @@ class VoiceCloner:
             print(f"Text is {len(text)} characters, splitting into {len(text_chunks)} chunks")
         
         for speaker_id, ref_audio_path in voice_models.items():
-            output_file = os.path.join(output_dir, f"{speaker_id}_synthesis.wav")
+            # Always generate WAV first, then convert if needed
+            wav_output_file = os.path.join(output_dir, f"{speaker_id}_synthesis.wav")
+            final_output_file = os.path.join(output_dir, f"{speaker_id}_synthesis.{output_format}")
             
             print(f"Generating speech for {speaker_id}...")
             
             if len(text_chunks) == 1:
                 # Single chunk - process normally
-                self.clone_voice(text, ref_audio_path, output_file, language)
+                self.clone_voice(text, ref_audio_path, wav_output_file, language)
             else:
                 # Multiple chunks - process each and concatenate
                 chunk_files = []
@@ -534,7 +552,7 @@ class VoiceCloner:
                     chunk_files.append(chunk_file)
                 
                 # Concatenate chunks
-                self._concatenate_audio_files(chunk_files, output_file)
+                self._concatenate_audio_files(chunk_files, wav_output_file)
                 
                 # Clean up temporary directory
                 try:
@@ -542,6 +560,18 @@ class VoiceCloner:
                 except OSError:
                     pass
             
-            output_files.append(output_file)
+            # Convert to MP3 if requested
+            if output_format == "mp3":
+                from .audio_processor import AudioProcessor
+                AudioProcessor.convert_to_mp3(wav_output_file, final_output_file)
+                # Remove the temporary WAV file
+                try:
+                    os.remove(wav_output_file)
+                except OSError:
+                    pass
+            else:
+                final_output_file = wav_output_file
+            
+            output_files.append(final_output_file)
         
         return output_files

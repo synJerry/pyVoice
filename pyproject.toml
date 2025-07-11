@@ -12,6 +12,8 @@ dependencies = [
     "matplotlib>=3.5.0",
     "pydub>=0.25.0",
     "ffmpeg-python>=0.2.0",
+    "lameenc>=1.6.0",
+    "audioread>=3.0.0",
     # Optional dependencies for different backends
     "coqui-tts>=0.22.0; extra == 'coqui'",
     "torch>=1.13.0; extra == 'coqui'",

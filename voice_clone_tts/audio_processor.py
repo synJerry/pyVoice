@@ -6,6 +6,8 @@ from typing import Tuple, Optional
 import os
 import tempfile
 import ffmpeg
+import lameenc
+import audioread
 
 class AudioProcessor:
     """
@@ -151,3 +153,39 @@ class AudioProcessor:
         except FileNotFoundError:
             return False  # ffmpeg not found
         return True
+    
+    @staticmethod
+    def convert_to_mp3(input_file: str, output_file: str, bitrate: int = 192) -> str:
+        """
+        Convert audio file to MP3 format using lameenc.
+        
+        Args:
+            input_file: Input audio file path
+            output_file: Output MP3 file path
+            bitrate: MP3 bitrate in kbps (default: 192)
+            
+        Returns:
+            Path to MP3 file
+        """
+        # Load audio data
+        audio, sr = librosa.load(input_file, sr=None)
+        
+        # Convert to 16-bit PCM format
+        audio_16bit = (audio * 32767).astype(np.int16)
+        
+        # Initialize LAME encoder
+        encoder = lameenc.Encoder()
+        encoder.set_bit_rate(bitrate)
+        encoder.set_in_sample_rate(sr)
+        encoder.set_channels(1)  # Mono
+        encoder.set_quality(2)  # High quality
+        
+        # Encode to MP3
+        mp3_data = encoder.encode(audio_16bit.tobytes())
+        mp3_data += encoder.flush()
+        
+        # Write MP3 file
+        with open(output_file, 'wb') as f:
+            f.write(mp3_data)
+        
+        return output_file

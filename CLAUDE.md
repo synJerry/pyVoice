@@ -91,6 +91,12 @@ python -m voice_clone_tts input_audio.wav --aws-transcribe transcribe_output.jso
 # AWS Transcribe with voice model saving
 python -m voice_clone_tts input_audio.wav --aws-transcribe transcribe_output.json --backend coqui --use-cpu --save-models
 
+# Generate MP3 output instead of WAV
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --output-format mp3
+
+# Load models and generate MP3 output
+python -m voice_clone_tts --load-models output/voice_models --text "Your text here" --backend coqui --use-cpu --output-format mp3
+
 # Note: Use WAV files for best results. WebM/MP4 files require ffmpeg for conversion
 ```
 

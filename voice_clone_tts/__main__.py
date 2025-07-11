@@ -42,6 +42,8 @@ def main():
                        help="Read text from transcript.txt file (overrides --text)")
     parser.add_argument("--aws-transcribe", type=str, metavar="JSON_FILE",
                        help="Use AWS Transcribe JSON output for speaker diarization (overrides --method)")
+    parser.add_argument("--output-format", choices=["wav", "mp3"], default="wav",
+                       help="Output audio format (default: wav)")
     
     args = parser.parse_args()
     
@@ -127,7 +129,8 @@ def main():
         output_files = cloner.generate_from_models(
             args.text, 
             voice_models, 
-            synthesis_dir
+            synthesis_dir,
+            output_format=args.output_format
         )
     else:
         # Full pipeline: preprocess, separate, clone
@@ -199,7 +202,8 @@ def main():
         output_files = cloner.batch_clone_voices(
             args.text, 
             reference_files, 
-            synthesis_dir
+            synthesis_dir,
+            output_format=args.output_format
         )
     
     print(f"Voice cloning complete! Generated files:")
