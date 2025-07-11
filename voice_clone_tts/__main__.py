@@ -30,12 +30,30 @@ def main():
                        help="Load saved voice models from directory (skip speaker separation)")
     parser.add_argument("--models-dir", default=None, 
                        help="Directory to save/load voice models (defaults to output_dir/voice_models)")
+    parser.add_argument("--clean", action="store_true",
+                       help="Delete existing files in output directory before processing (preserves subdirectories)")
     
     args = parser.parse_args()
     
     # Validate arguments
     if not args.load_models and not args.audio_file:
         parser.error("audio_file is required unless --load-models is specified")
+    
+    # Handle clean flag
+    if args.clean and os.path.exists(args.output_dir):
+        print(f"Cleaning files in output directory: {args.output_dir}")
+        import shutil
+        import glob
+        
+        # Delete all files in the directory and subdirectories, but preserve directory structure
+        for root, dirs, files in os.walk(args.output_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    os.remove(file_path)
+                    print(f"Deleted: {file_path}")
+                except OSError as e:
+                    print(f"Warning: Could not delete {file_path}: {e}")
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)

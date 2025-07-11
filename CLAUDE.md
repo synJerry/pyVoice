@@ -61,6 +61,9 @@ python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-c
 # Using HuggingFace models (requires token)
 python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
 
+# Clean previous output files before processing (preserves directory structure)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --clean
+
 # Note: Use WAV files for best results. WebM/MP4 files require ffmpeg for conversion
 ```
 
