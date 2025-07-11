@@ -29,7 +29,8 @@ class SpeakerSeparator:
     Separates speakers from audio using local processing, HuggingFace models, or AWS Transcribe diarization.
     """
     
-    def __init__(self, method: str = "local", huggingface_token: str = None, aws_transcribe_file: str = None):
+    def __init__(self, method: str = "local", huggingface_token: str = None, aws_transcribe_file: str = None, 
+                 use_mps: bool = False):
         """
         Initialize the speaker separator.
         
@@ -37,21 +38,38 @@ class SpeakerSeparator:
             method: "local", "huggingface", or "aws" for separation method
             huggingface_token: HuggingFace token (only needed for huggingface method)
             aws_transcribe_file: Path to AWS Transcribe JSON file (only needed for aws method)
+            use_mps: Use Apple Silicon Metal Performance Shaders for acceleration
         """
         self.method = method
         self.huggingface_token = huggingface_token
         self.aws_transcribe_file = aws_transcribe_file
+        self.use_mps = use_mps
         self.pipeline = None
         self.embedding_model = None
+        self.device = self._get_device()
         
-        if method == "huggingface":
+    def _get_device(self):
+        """
+        Get the appropriate PyTorch device based on availability and user preferences.
+        
+        Returns:
+            torch.device: The device to use for computations
+        """
+        if self.use_mps and torch.backends.mps.is_available():
+            return torch.device("mps")
+        elif torch.cuda.is_available():
+            return torch.device("cuda")
+        else:
+            return torch.device("cpu")
+        
+        if self.method == "huggingface":
             self._setup_hf_models()
-        elif method == "local":
+        elif self.method == "local":
             print("Using local CPU-based speaker separation")
-        elif method == "aws":
-            if not aws_transcribe_file:
+        elif self.method == "aws":
+            if not self.aws_transcribe_file:
                 raise ValueError("AWS Transcribe file path required for 'aws' method")
-            print(f"Using AWS Transcribe diarization from {aws_transcribe_file}")
+            print(f"Using AWS Transcribe diarization from {self.aws_transcribe_file}")
     
     def _setup_hf_models(self):
         """Setup pyannote models for speaker diarization."""
@@ -85,7 +103,7 @@ class SpeakerSeparator:
                 # Initialize speaker embedding model
                 self.embedding_model = PretrainedSpeakerEmbedding(
                     "speechbrain/spkrec-ecapa-voxceleb",
-                    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                    device=self.device
                 )
         except Exception as e:
             print(f"Warning: Could not load pyannote models: {e}")

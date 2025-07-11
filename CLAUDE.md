@@ -26,7 +26,17 @@ uv venv -p 3.11.7
 source .venv/bin/activate  # Linux/Mac
 
 # Install dependencies
+
+# For CPU-only (default, most compatible)
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# For Apple Silicon (M1/M2/M3) with Metal acceleration
+uv pip install torch torchvision torchaudio
+
+# For NVIDIA GPUs with CUDA
+uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Install the project dependencies
 uv pip install -r ./pyproject.toml --all-extras
 ```
 
@@ -37,6 +47,9 @@ uv pip install -r ./pyproject.toml --all-extras
 # Create voice models from audio file (one-time setup)
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --save-models
 
+# For Apple Silicon users (faster with Metal acceleration)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-mps --save-models
+
 # This will create voice models in the 'output/voice_models' directory
 # Models are saved as: output/voice_models/speaker_0_reference.wav, speaker_0_metadata.json, etc.
 ```
@@ -45,6 +58,9 @@ python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-c
 ```bash
 # Generate speech using saved voice models (very fast)
 python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui --use-cpu
+
+# For Apple Silicon users (faster with Metal acceleration)
+python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui --use-mps
 
 # With custom output directory
 python -m voice_clone_tts --load-models my_output/voice_models --text "Hello world" --output-dir my_output --backend coqui --use-cpu
@@ -58,8 +74,14 @@ python -m voice_clone_tts --load-models /path/to/custom/models --text "Your text
 # Basic usage with CPU processing (slower, processes everything each time)
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
 
+# For Apple Silicon users (faster with Metal acceleration)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-mps
+
 # Using HuggingFace models (requires token)
 python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
+
+# Using HuggingFace models with Apple Silicon acceleration
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui --use-mps
 
 # Clean previous output files before processing (preserves directory structure)
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --clean

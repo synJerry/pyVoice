@@ -37,7 +37,7 @@ class VoiceCloner:
     """
     
     def __init__(self, backend: str = "auto", model_name: str = None, use_cpu: bool = True, 
-                 filesystem_manager: FileSystemManager = None):
+                 use_mps: bool = False, filesystem_manager: FileSystemManager = None):
         """
         Initialize voice cloner.
         
@@ -45,25 +45,43 @@ class VoiceCloner:
             backend: "coqui", "pyttsx3", "espeak", or "auto"
             model_name: Specific model name (for Coqui TTS)
             use_cpu: Force CPU usage for better compatibility
+            use_mps: Use Apple Silicon Metal Performance Shaders (overrides use_cpu)
             filesystem_manager: FileSystemManager instance for optimized I/O
         """
         self.backend = backend
         self.use_cpu = use_cpu
-        self.device = torch.device("cpu" if use_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.use_mps = use_mps
+        self.device = self._get_device()
         self.tts = None
         self.fs_manager = filesystem_manager or FileSystemManager()
         self.pyttsx3_engine = None
         
-        if backend == "auto":
+    def _get_device(self):
+        """
+        Get the appropriate PyTorch device based on availability and user preferences.
+        
+        Returns:
+            torch.device: The device to use for computations
+        """
+        if self.use_cpu:
+            return torch.device("cpu")
+        elif self.use_mps and torch.backends.mps.is_available():
+            return torch.device("mps")
+        elif torch.cuda.is_available():
+            return torch.device("cuda")
+        else:
+            return torch.device("cpu")
+        
+        if self.backend == "auto":
             self._setup_auto_backend(model_name)
-        elif backend == "coqui":
+        elif self.backend == "coqui":
             self._setup_coqui_backend(model_name)
-        elif backend == "pyttsx3":
+        elif self.backend == "pyttsx3":
             self._setup_pyttsx3_backend()
-        elif backend == "espeak":
+        elif self.backend == "espeak":
             self._setup_espeak_backend()
         else:
-            raise ValueError(f"Unknown backend: {backend}")
+            raise ValueError(f"Unknown backend: {self.backend}")
     
     def _setup_auto_backend(self, model_name: str = None):
         """Setup the best available backend automatically."""

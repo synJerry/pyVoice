@@ -16,18 +16,18 @@ dependencies = [
     "audioread>=3.0.0",
     # Optional dependencies for different backends
     "coqui-tts>=0.22.0; extra == 'coqui'",
-    "torch>=1.13.0; extra == 'coqui'",
-    "torchaudio>=0.13.0; extra == 'coqui'",
+    "torch>=2.0.0; extra == 'coqui'",
+    "torchaudio>=2.0.0; extra == 'coqui'",
     "pyannote.audio>=3.3.1; extra == 'huggingface'",
     "speechbrain>=1.0.0; extra == 'huggingface'",
     "pyttsx3>=2.90; extra == 'local'",
 ]
 
 [project.optional-dependencies]
-coqui = ["coqui-tts>=0.22.0", "torch>=1.13.0", "torchaudio>=0.13.0"]
+coqui = ["coqui-tts>=0.22.0", "torch>=2.0.0", "torchaudio>=2.0.0"]
 huggingface = ["pyannote.audio>=3.3.1", "speechbrain>=1.0.0"]
 local = ["pyttsx3>=2.90"]
-full = ["coqui-tts>=0.22.0", "torch>=1.13.0", "torchaudio>=0.13.0", "pyannote.audio>=3.3.1", "speechbrain>=1.0.0", "pyttsx3>=2.90"]
+full = ["coqui-tts>=0.22.0", "torch>=2.0.0", "torchaudio>=2.0.0", "pyannote.audio>=3.3.1", "speechbrain>=1.0.0", "pyttsx3>=2.90"]
 
 [build-system]
 requires = ["hatchling"]
