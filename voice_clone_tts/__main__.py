@@ -185,8 +185,11 @@ def main():
             ref_file = os.path.join(speaker_dir, f"{speaker_id}.wav")
             reference_files.append(ref_file)
         
-        # Save voice models if requested or if they don't exist
-        if args.save_models or not os.path.exists(args.models_dir):
+        # Save voice models if requested or if no model files exist
+        model_files_exist = (os.path.exists(args.models_dir) and 
+                           any(f.endswith("_metadata.json") for f in os.listdir(args.models_dir)))
+        
+        if args.save_models or not model_files_exist:
             print(f"Saving voice models to {args.models_dir}...")
             cloner.save_voice_models(reference_files, args.models_dir)
         

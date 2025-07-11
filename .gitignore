@@ -18,11 +18,12 @@ test.py
 
 # Output Files
 #output/
-metadata.json
+*metadata.json
 
 # Input Files
 transcribe.*
 transcribe*json
+transcript.txt
 
 # Claude Code settings
 .claude/
