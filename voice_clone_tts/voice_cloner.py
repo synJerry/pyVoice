@@ -6,6 +6,7 @@ import tempfile
 import warnings
 import json
 import shutil
+from .filesystem_manager import FileSystemManager
 
 # Optional imports for different TTS backends
 try:
@@ -35,7 +36,8 @@ class VoiceCloner:
     Voice cloning using various TTS backends, optimized for CPU usage.
     """
     
-    def __init__(self, backend: str = "auto", model_name: str = None, use_cpu: bool = True):
+    def __init__(self, backend: str = "auto", model_name: str = None, use_cpu: bool = True, 
+                 filesystem_manager: FileSystemManager = None):
         """
         Initialize voice cloner.
         
@@ -43,11 +45,13 @@ class VoiceCloner:
             backend: "coqui", "pyttsx3", "espeak", or "auto"
             model_name: Specific model name (for Coqui TTS)
             use_cpu: Force CPU usage for better compatibility
+            filesystem_manager: FileSystemManager instance for optimized I/O
         """
         self.backend = backend
         self.use_cpu = use_cpu
         self.device = torch.device("cpu" if use_cpu else ("cuda" if torch.cuda.is_available() else "cpu"))
         self.tts = None
+        self.fs_manager = filesystem_manager or FileSystemManager()
         self.pyttsx3_engine = None
         
         if backend == "auto":
@@ -164,7 +168,7 @@ class VoiceCloner:
             raise RuntimeError("Coqui TTS model not available")
         
         try:
-            if self.supports_voice_cloning and reference_audio and os.path.exists(reference_audio):
+            if self.supports_voice_cloning and reference_audio and self.fs_manager.file_exists(reference_audio):
                 # Voice cloning with reference audio
                 print(f"Cloning voice from {reference_audio}")
                 
@@ -184,7 +188,7 @@ class VoiceCloner:
                 )
             else:
                 # Standard TTS without voice cloning
-                if reference_audio and not os.path.exists(reference_audio):
+                if reference_audio and not self.fs_manager.file_exists(reference_audio):
                     print(f"Warning: Reference audio file not found: {reference_audio}")
                 if not self.supports_voice_cloning:
                     print("Warning: Current model doesn't support voice cloning")
@@ -318,7 +322,7 @@ class VoiceCloner:
         sample_rate = None
         
         for audio_file in audio_files:
-            if os.path.exists(audio_file):
+            if self.fs_manager.file_exists(audio_file):
                 audio, sr = sf.read(audio_file)
                 if sample_rate is None:
                     sample_rate = sr
@@ -360,7 +364,7 @@ class VoiceCloner:
         Returns:
             List of generated audio file paths
         """
-        os.makedirs(output_dir, exist_ok=True)
+        self.fs_manager.ensure_directory(output_dir)
         output_files = []
         
         # Check if text needs chunking (for Coqui TTS character limit)
@@ -386,7 +390,7 @@ class VoiceCloner:
                 # Multiple chunks - process each and concatenate
                 chunk_files = []
                 temp_dir = os.path.join(output_dir, f"temp_speaker_{i}")
-                os.makedirs(temp_dir, exist_ok=True)
+                self.fs_manager.ensure_directory(temp_dir)
                 
                 for j, chunk in enumerate(text_chunks):
                     chunk_file = os.path.join(temp_dir, f"chunk_{j}.wav")
@@ -413,10 +417,7 @@ class VoiceCloner:
                 from .audio_processor import AudioProcessor
                 AudioProcessor.convert_to_mp3(wav_output_file, final_output_file)
                 # Remove the temporary WAV file
-                try:
-                    os.remove(wav_output_file)
-                except OSError:
-                    pass
+                self.fs_manager.cleanup_temp_files([wav_output_file])
             else:
                 final_output_file = wav_output_file
             
@@ -435,12 +436,15 @@ class VoiceCloner:
         Returns:
             Dictionary mapping speaker IDs to model paths
         """
-        os.makedirs(model_dir, exist_ok=True)
+        self.fs_manager.ensure_directory(model_dir)
         
         voice_models = {}
         
+        # Batch validate reference files
+        file_exists_map = self.fs_manager.batch_file_exists(reference_audios)
+        
         for i, ref_audio in enumerate(reference_audios):
-            if not os.path.exists(ref_audio):
+            if not file_exists_map.get(ref_audio, False):
                 print(f"Warning: Reference audio not found: {ref_audio}")
                 continue
             
@@ -482,26 +486,18 @@ class VoiceCloner:
         """
         voice_models = {}
         
-        if not os.path.exists(model_dir):
+        if not self.fs_manager.directory_exists(model_dir):
             print(f"Voice model directory not found: {model_dir}")
             return voice_models
         
-        # Look for metadata files in the flat directory structure
-        for file_name in os.listdir(model_dir):
-            if file_name.endswith("_metadata.json"):
-                metadata_path = os.path.join(model_dir, file_name)
-                
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                
-                speaker_id = metadata["speaker_id"]
-                ref_audio_path = os.path.join(model_dir, metadata["reference_audio"])
-                
-                if os.path.exists(ref_audio_path):
-                    voice_models[speaker_id] = ref_audio_path
-                    print(f"Loaded voice model for {speaker_id}")
-                else:
-                    print(f"Warning: Reference audio not found for {speaker_id}: {ref_audio_path}")
+        voice_models = self.fs_manager.get_model_files(model_dir)
+        
+        if not voice_models:
+            print(f"No valid voice models found in {model_dir}")
+        else:
+            print(f"Loaded {len(voice_models)} voice models from {model_dir}")
+            for speaker_id in voice_models:
+                print(f"  - {speaker_id}")
         
         return voice_models
     
@@ -520,7 +516,7 @@ class VoiceCloner:
         Returns:
             List of generated audio file paths
         """
-        os.makedirs(output_dir, exist_ok=True)
+        self.fs_manager.ensure_directory(output_dir)
         output_files = []
         
         # Check if text needs chunking
@@ -544,7 +540,7 @@ class VoiceCloner:
                 # Multiple chunks - process each and concatenate
                 chunk_files = []
                 temp_dir = os.path.join(output_dir, f"temp_{speaker_id}")
-                os.makedirs(temp_dir, exist_ok=True)
+                self.fs_manager.ensure_directory(temp_dir)
                 
                 for j, chunk in enumerate(text_chunks):
                     chunk_file = os.path.join(temp_dir, f"chunk_{j}.wav")
@@ -565,10 +561,7 @@ class VoiceCloner:
                 from .audio_processor import AudioProcessor
                 AudioProcessor.convert_to_mp3(wav_output_file, final_output_file)
                 # Remove the temporary WAV file
-                try:
-                    os.remove(wav_output_file)
-                except OSError:
-                    pass
+                self.fs_manager.cleanup_temp_files([wav_output_file])
             else:
                 final_output_file = wav_output_file
             

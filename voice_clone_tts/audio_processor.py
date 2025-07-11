@@ -8,6 +8,7 @@ import tempfile
 import ffmpeg
 import lameenc
 import audioread
+from .filesystem_manager import FileSystemManager
 
 class AudioProcessor:
     """
@@ -16,7 +17,8 @@ class AudioProcessor:
     
     @staticmethod
     def preprocess_audio(audio_file: str, target_sr: int = 16000, 
-                        output_file: Optional[str] = None, auto_convert: bool = True) -> str:
+                        output_file: Optional[str] = None, auto_convert: bool = True,
+                        filesystem_manager: FileSystemManager = None) -> str:
         """
         Preprocess audio file for speaker separation.
         
@@ -25,10 +27,12 @@ class AudioProcessor:
             target_sr: Target sample rate
             output_file: Output file path (optional)
             auto_convert: Whether to automatically convert from other formats
+            filesystem_manager: FileSystemManager instance for optimized I/O
             
         Returns:
             Path to preprocessed audio file
         """
+        fs_manager = filesystem_manager or FileSystemManager()
         # Check if we need to convert the audio format
         input_format = AudioProcessor.detect_audio_format(audio_file)
         
@@ -52,14 +56,11 @@ class AudioProcessor:
                 audio, sr = librosa.load(temp_wav.name, sr=target_sr)
                 
                 # Clean up temporary file
-                os.unlink(temp_wav.name)
+                fs_manager.cleanup_temp_files([temp_wav.name])
                 
             except Exception as e:
                 # Clean up temporary file on error
-                try:
-                    os.unlink(temp_wav.name)
-                except:
-                    pass
+                fs_manager.cleanup_temp_files([temp_wav.name])
                 raise RuntimeError(f"Failed to convert audio format {input_format}: {e}")
         else:
             # Load audio directly
