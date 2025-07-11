@@ -74,7 +74,7 @@ class AudioProcessor:
             base_name = os.path.splitext(os.path.basename(audio_file))[0]
             output_file = f"{base_name}_preprocessed.wav"
         
-        sf.write(output_file, audio, target_sr)
+        sf.write(output_file, audio, target_sr, subtype='PCM_16')
         return output_file
     
     @staticmethod

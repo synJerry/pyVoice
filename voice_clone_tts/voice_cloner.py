@@ -1,9 +1,11 @@
 import os
 import torch
 import soundfile as sf
-from typing import Optional, List
+from typing import Optional, List, Dict
 import tempfile
 import warnings
+import json
+import shutil
 
 # Optional imports for different TTS backends
 try:
@@ -197,7 +199,7 @@ class VoiceCloner:
                 sample_rate = getattr(self.tts.synthesizer.output_sample_rate, 'value', 22050) \
                     if hasattr(self.tts, 'synthesizer') else 22050
                 
-                sf.write(output_file, wav, sample_rate)
+                sf.write(output_file, wav, sample_rate, subtype='PCM_16')
             
             return output_file
             
@@ -205,7 +207,7 @@ class VoiceCloner:
             print(f"Error in Coqui TTS: {e}")
             # Create a silent audio file as fallback
             silent_audio = torch.zeros(22050)  # 1 second of silence
-            sf.write(output_file, silent_audio.numpy(), 22050)
+            sf.write(output_file, silent_audio.numpy(), 22050, subtype='PCM_16')
             return output_file
     
     def _clone_voice_pyttsx3(self, text: str, output_file: str, voice_index: int) -> str:
@@ -229,7 +231,7 @@ class VoiceCloner:
             print(f"Error in pyttsx3: {e}")
             # Create a silent audio file as fallback
             silent_audio = torch.zeros(22050)
-            sf.write(output_file, silent_audio.numpy(), 22050)
+            sf.write(output_file, silent_audio.numpy(), 22050, subtype='PCM_16')
             return output_file
     
     def _clone_voice_espeak(self, text: str, output_file: str) -> str:
@@ -247,7 +249,7 @@ class VoiceCloner:
             print(f"Error in espeak: {e}")
             # Create a silent audio file as fallback
             silent_audio = torch.zeros(22050)
-            sf.write(output_file, silent_audio.numpy(), 22050)
+            sf.write(output_file, silent_audio.numpy(), 22050, subtype='PCM_16')
             return output_file
     
     def batch_clone_voices(self, text: str, reference_audios: List[str], 
@@ -277,6 +279,112 @@ class VoiceCloner:
                 voice_index = i % 5  # Cycle through available voices
                 self.clone_voice(text, None, output_file, language, voice_index)
             
+            output_files.append(output_file)
+        
+        return output_files
+    
+    def save_voice_models(self, reference_audios: List[str], model_dir: str) -> Dict[str, str]:
+        """
+        Save voice models for reuse.
+        
+        Args:
+            reference_audios: List of reference audio files
+            model_dir: Directory to save voice models
+            
+        Returns:
+            Dictionary mapping speaker IDs to model paths
+        """
+        os.makedirs(model_dir, exist_ok=True)
+        
+        voice_models = {}
+        
+        for i, ref_audio in enumerate(reference_audios):
+            if not os.path.exists(ref_audio):
+                print(f"Warning: Reference audio not found: {ref_audio}")
+                continue
+            
+            # Create speaker-specific directory
+            speaker_id = f"speaker_{i}"
+            speaker_dir = os.path.join(model_dir, speaker_id)
+            os.makedirs(speaker_dir, exist_ok=True)
+            
+            # Copy reference audio to model directory
+            model_audio_path = os.path.join(speaker_dir, "reference.wav")
+            shutil.copy2(ref_audio, model_audio_path)
+            
+            # Save model metadata
+            metadata = {
+                "speaker_id": speaker_id,
+                "reference_audio": "reference.wav",
+                "backend": self.backend,
+                "model_name": getattr(self, 'model_name', 'unknown'),
+                "created_at": __import__('datetime').datetime.now().isoformat()
+            }
+            
+            metadata_path = os.path.join(speaker_dir, "metadata.json")
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            voice_models[speaker_id] = speaker_dir
+            print(f"Saved voice model for {speaker_id} at {speaker_dir}")
+        
+        return voice_models
+    
+    def load_voice_models(self, model_dir: str) -> Dict[str, str]:
+        """
+        Load saved voice models.
+        
+        Args:
+            model_dir: Directory containing voice models
+            
+        Returns:
+            Dictionary mapping speaker IDs to reference audio paths
+        """
+        voice_models = {}
+        
+        if not os.path.exists(model_dir):
+            print(f"Voice model directory not found: {model_dir}")
+            return voice_models
+        
+        for speaker_dir in os.listdir(model_dir):
+            speaker_path = os.path.join(model_dir, speaker_dir)
+            if not os.path.isdir(speaker_path):
+                continue
+            
+            metadata_path = os.path.join(speaker_path, "metadata.json")
+            ref_audio_path = os.path.join(speaker_path, "reference.wav")
+            
+            if os.path.exists(metadata_path) and os.path.exists(ref_audio_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                
+                voice_models[metadata["speaker_id"]] = ref_audio_path
+                print(f"Loaded voice model for {metadata['speaker_id']}")
+        
+        return voice_models
+    
+    def generate_from_models(self, text: str, voice_models: Dict[str, str], 
+                           output_dir: str, language: str = "en") -> List[str]:
+        """
+        Generate speech using saved voice models.
+        
+        Args:
+            text: Text to synthesize
+            voice_models: Dictionary mapping speaker IDs to reference audio paths
+            output_dir: Output directory
+            language: Language code
+            
+        Returns:
+            List of generated audio file paths
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        output_files = []
+        
+        for speaker_id, ref_audio_path in voice_models.items():
+            output_file = os.path.join(output_dir, f"{speaker_id}_synthesis.wav")
+            
+            print(f"Generating speech for {speaker_id}...")
+            self.clone_voice(text, ref_audio_path, output_file, language)
             output_files.append(output_file)
         
         return output_files

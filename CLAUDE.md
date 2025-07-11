@@ -31,12 +31,32 @@ uv pip install -r ./pyproject.toml --all-extras
 ```
 
 ### Running the Application
+
+#### First-time setup (create voice models):
 ```bash
-# Basic usage with CPU processing (recommended for voice cloning)
-python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
+# Create voice models from audio file (one-time setup)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --save-models
+
+# This will create voice models in the 'output/voice_models' directory
+# Models are saved as: output/voice_models/speaker_0/, output/voice_models/speaker_1/, etc.
+```
+
+#### Fast generation (using saved models):
+```bash
+# Generate speech using saved voice models (very fast)
+python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui --use-cpu
 
 # With custom output directory
-python -m voice_clone_tts input_audio.wav --output-dir my_output --method local --backend coqui
+python -m voice_clone_tts --load-models my_output/voice_models --text "Hello world" --output-dir my_output --backend coqui --use-cpu
+
+# Using custom models directory
+python -m voice_clone_tts --load-models /path/to/custom/models --text "Your text" --backend coqui --use-cpu
+```
+
+#### Legacy usage (full pipeline each time):
+```bash
+# Basic usage with CPU processing (slower, processes everything each time)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
 
 # Using HuggingFace models (requires token)
 python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
@@ -85,7 +105,7 @@ All backends have fallback mechanisms that generate silent audio files when TTS 
 
 - `pyproject.toml`: Main configuration with optional dependencies
 - `setup.py`: Legacy setup file (pyproject.toml is preferred)
-- `output/`: Default directory for generated audio files
+- `output/`: Default directory for generated audio files and voice models
 - Audio files are processed in WAV format at 16kHz sample rate
 - Generated files follow naming convention: `speaker_N_synthesis.wav`
 
