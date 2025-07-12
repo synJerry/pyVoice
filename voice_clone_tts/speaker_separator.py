@@ -30,7 +30,7 @@ class SpeakerSeparator:
     """
     
     def __init__(self, method: str = "local", huggingface_token: str = None, aws_transcribe_file: str = None, 
-                 use_mps: bool = False):
+                 use_cpu: bool = False):
         """
         Initialize the speaker separator.
         
@@ -38,28 +38,36 @@ class SpeakerSeparator:
             method: "local", "huggingface", or "aws" for separation method
             huggingface_token: HuggingFace token (only needed for huggingface method)
             aws_transcribe_file: Path to AWS Transcribe JSON file (only needed for aws method)
-            use_mps: Use Apple Silicon Metal Performance Shaders for acceleration
+            use_cpu: Force CPU usage (overrides automatic GPU detection)
         """
         self.method = method
         self.huggingface_token = huggingface_token
         self.aws_transcribe_file = aws_transcribe_file
-        self.use_mps = use_mps
+        self.use_cpu = use_cpu
         self.pipeline = None
         self.embedding_model = None
         self.device = self._get_device()
         
     def _get_device(self):
         """
-        Get the appropriate PyTorch device based on availability and user preferences.
+        Automatically detect the optimal PyTorch device.
         
         Returns:
             torch.device: The device to use for computations
         """
-        if self.use_mps and torch.backends.mps.is_available():
+        if self.use_cpu:
+            print("Speaker Separator using CPU (forced)")
+            return torch.device("cpu")
+        elif torch.backends.mps.is_available():
+            # Enable MPS fallback for unsupported operations
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            print("Speaker Separator using Apple Silicon GPU acceleration (with CPU fallback for unsupported ops)")
             return torch.device("mps")
         elif torch.cuda.is_available():
+            print("Speaker Separator using NVIDIA GPU acceleration")
             return torch.device("cuda")
         else:
+            print("Speaker Separator using CPU")
             return torch.device("cpu")
         
         if self.method == "huggingface":

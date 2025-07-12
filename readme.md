@@ -64,3 +64,17 @@ tts --list_models #To get the list of available models
 python3 TTS/server/server.py --model_name tts_models/en/vctk/vits
 # 148MB Model downloads, but why is ths container so big (12GB) if the model doesn't already exist locally?
 ```
+
+### Mac Setup
+```bash
+pip3 install uv
+# From this local dir
+uv venv -p 3.11.7
+source .venv/bin/activate
+#uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+uv pip install -r ./pyproject.toml --all-extras
+```
+
+```bash
+python -m voice_clone_tts "Syn.wav" --aws-transcribe "transcribe.json" --backend coqui --use-transcript --output-format mp3 --clean
+```

@@ -27,3 +27,7 @@ transcript.txt
 
 # Claude Code settings
 .claude/
+.nvmrc
+node_modules/
+package-lock.json
+package.json

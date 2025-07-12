@@ -48,7 +48,7 @@ uv pip install -r ./pyproject.toml --all-extras
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --save-models
 
 # For Apple Silicon users (faster with Metal acceleration)
-python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-mps --save-models
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --save-models
 
 # This will create voice models in the 'output/voice_models' directory
 # Models are saved as: output/voice_models/speaker_0_reference.wav, speaker_0_metadata.json, etc.
@@ -60,7 +60,7 @@ python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-m
 python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui --use-cpu
 
 # For Apple Silicon users (faster with Metal acceleration)
-python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui --use-mps
+python -m voice_clone_tts --load-models output/voice_models --text "Your new text here" --backend coqui
 
 # With custom output directory
 python -m voice_clone_tts --load-models my_output/voice_models --text "Hello world" --output-dir my_output --backend coqui --use-cpu
@@ -75,13 +75,13 @@ python -m voice_clone_tts --load-models /path/to/custom/models --text "Your text
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
 
 # For Apple Silicon users (faster with Metal acceleration)
-python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-mps
+python -m voice_clone_tts input_audio.wav --method local --backend coqui
 
 # Using HuggingFace models (requires token)
 python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
 
 # Using HuggingFace models with Apple Silicon acceleration
-python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui --use-mps
+python -m voice_clone_tts input_audio.wav --method huggingface --hf-token YOUR_TOKEN --backend coqui
 
 # Clean previous output files before processing (preserves directory structure)
 python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --clean
@@ -144,6 +144,13 @@ pip install -e .
 - **pyttsx3**: Local TTS without voice cloning, cycles through available system voices
 - **espeak**: Command-line based TTS
 - **auto**: Automatically selects best available backend
+
+### Device Selection
+The system automatically detects and uses the optimal device:
+- **Apple Silicon (M1/M2/M3)**: Uses Metal Performance Shaders (MPS) for GPU acceleration
+- **NVIDIA GPUs**: Uses CUDA for GPU acceleration  
+- **CPU**: Fallback option, used when no GPU is available or with `--use-cpu` flag
+- Use `--use-cpu` to force CPU usage even when GPU is available
 
 ### Speaker Separation Methods
 - **local**: Uses spectral clustering on MFCC features, spectral centroid, rolloff, and zero-crossing rate

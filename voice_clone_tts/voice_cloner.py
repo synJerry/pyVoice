@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 import soundfile as sf
 from typing import Optional, List, Dict
 import tempfile
@@ -37,41 +38,25 @@ class VoiceCloner:
     """
     
     def __init__(self, backend: str = "auto", model_name: str = None, use_cpu: bool = True, 
-                 use_mps: bool = False, filesystem_manager: FileSystemManager = None):
+                 filesystem_manager: FileSystemManager = None):
         """
         Initialize voice cloner.
         
         Args:
             backend: "coqui", "pyttsx3", "espeak", or "auto"
             model_name: Specific model name (for Coqui TTS)
-            use_cpu: Force CPU usage for better compatibility
-            use_mps: Use Apple Silicon Metal Performance Shaders (overrides use_cpu)
+            use_cpu: Force CPU usage (overrides automatic device detection)
             filesystem_manager: FileSystemManager instance for optimized I/O
         """
         self.backend = backend
         self.use_cpu = use_cpu
-        self.use_mps = use_mps
         self.device = self._get_device()
         self.tts = None
         self.fs_manager = filesystem_manager or FileSystemManager()
         self.pyttsx3_engine = None
+        self.supports_voice_cloning = False
         
-    def _get_device(self):
-        """
-        Get the appropriate PyTorch device based on availability and user preferences.
-        
-        Returns:
-            torch.device: The device to use for computations
-        """
-        if self.use_cpu:
-            return torch.device("cpu")
-        elif self.use_mps and torch.backends.mps.is_available():
-            return torch.device("mps")
-        elif torch.cuda.is_available():
-            return torch.device("cuda")
-        else:
-            return torch.device("cpu")
-        
+        # Initialize backend after device detection
         if self.backend == "auto":
             self._setup_auto_backend(model_name)
         elif self.backend == "coqui":
@@ -82,6 +67,27 @@ class VoiceCloner:
             self._setup_espeak_backend()
         else:
             raise ValueError(f"Unknown backend: {self.backend}")
+        
+    def _get_device(self):
+        """
+        Automatically detect the optimal PyTorch device.
+        
+        Returns:
+            torch.device: The device to use for computations
+        """
+        if self.use_cpu:
+            return torch.device("cpu")
+        elif torch.backends.mps.is_available():
+            # Enable MPS fallback for unsupported operations (like FFT in TTS)
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+            print("Using Apple Silicon GPU acceleration (with CPU fallback for unsupported ops)")
+            return torch.device("mps")
+        elif torch.cuda.is_available():
+            print("Using NVIDIA GPU acceleration")
+            return torch.device("cuda")
+        else:
+            print("Using CPU")
+            return torch.device("cpu")
     
     def _setup_auto_backend(self, model_name: str = None):
         """Setup the best available backend automatically."""
@@ -97,7 +103,7 @@ class VoiceCloner:
             raise RuntimeError("No TTS backend available. Install coqui-tts or pyttsx3")
     
     def _setup_coqui_backend(self, model_name: str = None):
-        """Setup Coqui TTS backend with CPU optimization."""
+        """Setup Coqui TTS backend with device optimization."""
         if not COQUI_TTS_AVAILABLE:
             raise ImportError("Coqui TTS not available. Install with: pip install coqui-tts")
         
@@ -105,9 +111,42 @@ class VoiceCloner:
             # Use XTTS model for voice cloning capability
             model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
         
+        def _load_model_with_device_fallback(model_name):
+            """Load model with device fallback for MPS compatibility."""
+            try:
+                print(f"Loading Coqui TTS model: {model_name}")
+                tts_model = TTS(model_name, progress_bar=False)
+                
+                # Try to move to target device
+                if self.device.type == "mps":
+                    print("🍎 Loading model to Apple Silicon MPS...")
+                    try:
+                        tts_model = tts_model.to(self.device)
+                        # Test basic operation to ensure MPS compatibility
+                        # Skip the test for multi-speaker models that require speaker parameter
+                        if hasattr(tts_model, 'speakers') and tts_model.speakers:
+                            print("✅ MPS model loading successful (multi-speaker model)")
+                        else:
+                            test_text = "test"
+                            _ = tts_model.tts(text=test_text)
+                            print("✅ MPS model loading successful")
+                    except Exception as mps_error:
+                        print(f"⚠️  MPS model loading failed: {mps_error}")
+                        print("🔄 Falling back to CPU for model loading...")
+                        tts_model = tts_model.to(torch.device("cpu"))
+                        self.device = torch.device("cpu")  # Update device for future operations
+                        print("✅ CPU fallback successful")
+                else:
+                    tts_model = tts_model.to(self.device)
+                
+                return tts_model
+                
+            except Exception as e:
+                print(f"Error loading model {model_name}: {e}")
+                raise e
+        
         try:
-            print(f"Loading Coqui TTS model: {model_name}")
-            self.tts = TTS(model_name, progress_bar=False).to(self.device)
+            self.tts = _load_model_with_device_fallback(model_name)
             self.model_name = model_name
             
             # Check if model supports voice cloning
@@ -122,7 +161,7 @@ class VoiceCloner:
             try:
                 fallback_model = "tts_models/multilingual/multi-dataset/xtts_v2"
                 print(f"Trying fallback model: {fallback_model}")
-                self.tts = TTS(fallback_model, progress_bar=False).to(self.device)
+                self.tts = _load_model_with_device_fallback(fallback_model)
                 self.model_name = fallback_model
                 self.supports_voice_cloning = True
             except Exception as e2:
@@ -185,51 +224,191 @@ class VoiceCloner:
         if self.tts is None:
             raise RuntimeError("Coqui TTS model not available")
         
-        try:
-            if self.supports_voice_cloning and reference_audio and self.fs_manager.file_exists(reference_audio):
-                # Voice cloning with reference audio
-                print(f"Cloning voice from {reference_audio}")
-                
-                # Check if reference audio has sufficient duration
-                import librosa
-                ref_audio, _ = librosa.load(reference_audio, sr=None)
-                duration = len(ref_audio) / 16000  # Assuming 16kHz
-                
-                if duration < 3.0:  # Need at least 3 seconds for good voice cloning
-                    print(f"Warning: Reference audio is only {duration:.1f}s. Voice cloning may be poor quality.")
-                
-                self.tts.tts_to_file(
-                    text=text,
-                    speaker_wav=reference_audio,
-                    language=language,
-                    file_path=output_file
-                )
-            else:
-                # Standard TTS without voice cloning
-                if reference_audio and not self.fs_manager.file_exists(reference_audio):
-                    print(f"Warning: Reference audio file not found: {reference_audio}")
-                if not self.supports_voice_cloning:
-                    print("Warning: Current model doesn't support voice cloning")
-                print("Generating speech with standard TTS")
-                wav = self.tts.tts(text=text)
-                
-                # Handle different output formats
-                if isinstance(wav, torch.Tensor):
-                    wav = wav.cpu().numpy()
-                
-                # Get sample rate
-                sample_rate = getattr(self.tts.synthesizer.output_sample_rate, 'value', 22050) \
-                    if hasattr(self.tts, 'synthesizer') else 22050
-                
-                sf.write(output_file, wav, sample_rate, subtype='PCM_16')
+        print(f"🎤 Synthesis on device: {self.device}")
+        print(f"📝 Text length: {len(text)} characters")
+        
+        # Check if we should force CPU for audio synthesis due to MPS issues
+        force_cpu_synthesis = self.device.type == "mps" and hasattr(self, '_mps_audio_issues')
+        if force_cpu_synthesis:
+            print("🔄 Forcing CPU for audio synthesis due to previous MPS issues")
+        
+        def _synthesize_with_device_fallback():
+            """Try synthesis on current device, fallback to CPU if needed."""
+            # If we've detected MPS audio issues before, go straight to CPU
+            if force_cpu_synthesis:
+                print("🔄 Skipping MPS, using CPU for audio synthesis...")
+                self.tts = self.tts.to(torch.device("cpu"))
             
-            return output_file
+            try:
+                if self.supports_voice_cloning and reference_audio and self.fs_manager.file_exists(reference_audio):
+                    # Voice cloning with reference audio
+                    print(f"Cloning voice from {reference_audio}")
+                    
+                    # Check if reference audio has sufficient duration
+                    import librosa
+                    ref_audio, _ = librosa.load(reference_audio, sr=None)
+                    duration = len(ref_audio) / 16000  # Assuming 16kHz
+                    
+                    if duration < 3.0:  # Need at least 3 seconds for good voice cloning
+                        print(f"Warning: Reference audio is only {duration:.1f}s. Voice cloning may be poor quality.")
+                    
+                    # Try synthesis on current device
+                    if self.device.type == "mps":
+                        print("🍎 Attempting synthesis on Apple Silicon MPS...")
+                    
+                    self.tts.tts_to_file(
+                        text=text,
+                        speaker_wav=reference_audio,
+                        language=language,
+                        file_path=output_file
+                    )
+                else:
+                    # Standard TTS without voice cloning
+                    if reference_audio and not self.fs_manager.file_exists(reference_audio):
+                        print(f"Warning: Reference audio file not found: {reference_audio}")
+                    if not self.supports_voice_cloning:
+                        print("Warning: Current model doesn't support voice cloning")
+                    print("Generating speech with standard TTS")
+                    
+                    if self.device.type == "mps":
+                        print("🍎 Attempting synthesis on Apple Silicon MPS...")
+                    
+                    wav = self.tts.tts(text=text)
+                    
+                    # Handle different output formats with MPS-safe conversion
+                    if isinstance(wav, torch.Tensor):
+                        print(f"🔍 Audio tensor info - Device: {wav.device}, Shape: {wav.shape}, Dtype: {wav.dtype}")
+                        
+                        # MPS-safe tensor conversion
+                        if wav.device.type == "mps":
+                            print("🍎 Converting MPS tensor to CPU...")
+                            # Ensure tensor is contiguous and properly formatted
+                            wav = wav.detach().contiguous().cpu()
+                            print(f"✅ MPS conversion complete - New device: {wav.device}")
+                        
+                        wav_numpy = wav.numpy()
+                        
+                        # Validate audio data
+                        if len(wav_numpy) == 0:
+                            raise RuntimeError("Generated audio tensor is empty")
+                        
+                        print(f"🎵 Audio stats - Min: {wav_numpy.min():.4f}, Max: {wav_numpy.max():.4f}, Mean: {wav_numpy.mean():.4f}")
+                        
+                        # Check for NaN or infinite values
+                        if not torch.isfinite(torch.from_numpy(wav_numpy)).all():
+                            print("⚠️  Audio contains NaN/infinite values, attempting to clean...")
+                            wav_numpy = torch.nan_to_num(torch.from_numpy(wav_numpy), nan=0.0, posinf=0.0, neginf=0.0).numpy()
+                        
+                        # Normalize audio if values are outside expected range
+                        if abs(wav_numpy.max()) > 1.0 or abs(wav_numpy.min()) > 1.0:
+                            print(f"🔧 Normalizing audio from range [{wav_numpy.min():.4f}, {wav_numpy.max():.4f}]")
+                            wav_numpy = wav_numpy / max(abs(wav_numpy.max()), abs(wav_numpy.min()))
+                            print(f"✅ Normalized to range [{wav_numpy.min():.4f}, {wav_numpy.max():.4f}]")
+                        
+                        wav = wav_numpy
+                    
+                    # Get sample rate
+                    sample_rate = getattr(self.tts.synthesizer.output_sample_rate, 'value', 22050) \
+                        if hasattr(self.tts, 'synthesizer') else 22050
+                    
+                    print(f"🎼 Writing audio - Sample rate: {sample_rate}Hz, Duration: {len(wav)/sample_rate:.2f}s")
+                    sf.write(output_file, wav, sample_rate, subtype='PCM_16')
+                
+                # Validate generated audio
+                if self.fs_manager.file_exists(output_file):
+                    import librosa
+                    audio, sr = librosa.load(output_file, sr=None)
+                    generated_duration = len(audio) / sr
+                    print(f"✅ Generated audio: {generated_duration:.2f}s")
+                    
+                    # Check if audio is suspiciously short for non-trivial text
+                    if generated_duration < 0.5 and len(text.strip()) > 10:
+                        raise RuntimeError(f"Generated audio too short ({generated_duration:.2f}s) for text length {len(text)}")
+                    
+                    # Check for unintelligible audio (too quiet or corrupted)
+                    audio_power = np.mean(audio ** 2)
+                    if audio_power < 1e-8:  # Extremely quiet audio
+                        print(f"⚠️  Audio power too low ({audio_power:.2e}) - may be corrupted")
+                        if self.device.type == "mps":
+                            self._mps_audio_issues = True
+                            raise RuntimeError("MPS generated corrupted audio")
+                    
+                    return output_file
+                else:
+                    raise RuntimeError("No output file generated")
+                    
+            except Exception as device_error:
+                # If we're on MPS and synthesis failed, try CPU fallback
+                if self.device.type == "mps":
+                    error_msg = str(device_error)
+                    if "aten::_fft_r2c" in error_msg:
+                        print("⚠️  MPS FFT operations not supported - this is a known limitation")
+                        print("🔄 Automatically falling back to CPU for TTS synthesis...")
+                    else:
+                        print(f"⚠️  MPS synthesis failed: {device_error}")
+                        print("🔄 Attempting CPU fallback...")
+                    
+                    try:
+                        # Mark MPS as problematic for future syntheses
+                        self._mps_audio_issues = True
+                        
+                        # Temporarily move model to CPU
+                        self.tts = self.tts.to(torch.device("cpu"))
+                        
+                        # Retry synthesis on CPU
+                        if self.supports_voice_cloning and reference_audio and self.fs_manager.file_exists(reference_audio):
+                            self.tts.tts_to_file(
+                                text=text,
+                                speaker_wav=reference_audio,
+                                language=language,
+                                file_path=output_file
+                            )
+                        else:
+                            wav = self.tts.tts(text=text)
+                            
+                            # Safe tensor conversion for CPU fallback
+                            if isinstance(wav, torch.Tensor):
+                                print(f"🔍 CPU fallback audio tensor - Shape: {wav.shape}, Dtype: {wav.dtype}")
+                                wav_numpy = wav.detach().contiguous().cpu().numpy()
+                                
+                                # Validate and normalize audio
+                                if len(wav_numpy) == 0:
+                                    raise RuntimeError("CPU fallback generated empty audio")
+                                
+                                # Check for corruption
+                                if not torch.isfinite(torch.from_numpy(wav_numpy)).all():
+                                    print("🔧 Cleaning corrupted audio data...")
+                                    wav_numpy = torch.nan_to_num(torch.from_numpy(wav_numpy), nan=0.0, posinf=0.0, neginf=0.0).numpy()
+                                
+                                # Normalize if needed
+                                if abs(wav_numpy.max()) > 1.0 or abs(wav_numpy.min()) > 1.0:
+                                    wav_numpy = wav_numpy / max(abs(wav_numpy.max()), abs(wav_numpy.min()))
+                                
+                                wav = wav_numpy
+                                print(f"✅ CPU fallback audio stats - Min: {wav.min():.4f}, Max: {wav.max():.4f}")
+                            
+                            sample_rate = getattr(self.tts.synthesizer.output_sample_rate, 'value', 22050) \
+                                if hasattr(self.tts, 'synthesizer') else 22050
+                            sf.write(output_file, wav, sample_rate, subtype='PCM_16')
+                        
+                        print("✅ CPU fallback successful")
+                        return output_file
+                        
+                    except Exception as cpu_error:
+                        print(f"❌ CPU fallback also failed: {cpu_error}")
+                        raise device_error  # Re-raise original error
+                else:
+                    raise device_error
+        
+        try:
+            return _synthesize_with_device_fallback()
             
         except Exception as e:
-            print(f"Error in Coqui TTS: {e}")
+            print(f"❌ All synthesis attempts failed: {e}")
             # Create a silent audio file as fallback
             silent_audio = torch.zeros(22050)  # 1 second of silence
             sf.write(output_file, silent_audio.numpy(), 22050, subtype='PCM_16')
+            print("🔇 Generated silent fallback audio")
             return output_file
     
     def _clone_voice_pyttsx3(self, text: str, output_file: str, voice_index: int) -> str:
