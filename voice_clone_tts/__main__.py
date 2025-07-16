@@ -24,7 +24,7 @@ def main():
                        default="auto", help="TTS backend")
     parser.add_argument("--hf-token", help="HuggingFace token (for huggingface method)")
     parser.add_argument("--text", default=SAMPLE_TEXT, help="Text to synthesize")
-    parser.add_argument("--use-cpu", action="store_true", help="Force CPU usage")
+    parser.add_argument("--use-cpu", action="store_true", help="Force CPU usage (overrides automatic GPU detection)")
     parser.add_argument("--save-models", action="store_true", 
                        help="Save voice models for reuse")
     parser.add_argument("--load-models", type=str, 
@@ -89,6 +89,9 @@ def main():
         warnings.filterwarnings("ignore", message=".*speechbrain.pretrained.*deprecated.*")
         warnings.filterwarnings("ignore", message=".*speechbrain.inference.*")
         warnings.filterwarnings("ignore", category=UserWarning, module="speechbrain")
+        # Suppress NNPACK warning on Apple Silicon
+        warnings.filterwarnings("ignore", message=".*Could not initialize NNPACK.*")
+        os.environ["NNPACK_DISABLE"] = "1"
     
     # Initialize filesystem manager
     fs_manager = FileSystemManager()
@@ -156,14 +159,15 @@ def main():
         # Determine separation method
         if args.aws_transcribe:
             # Use AWS Transcribe diarization
-            separator = SpeakerSeparator(method="aws", aws_transcribe_file=args.aws_transcribe)
+            separator = SpeakerSeparator(method="aws", aws_transcribe_file=args.aws_transcribe, use_cpu=args.use_cpu)
             print(f"🎯 Using AWS Transcribe diarization from {args.aws_transcribe}")
             speaker_audio = separator.separate_speakers(preprocessed_audio)
         else:
             # Use traditional methods
             separator = SpeakerSeparator(
                 method=args.method,
-                huggingface_token=args.hf_token
+                huggingface_token=args.hf_token,
+                use_cpu=args.use_cpu
             )
             
             # Recommend better method if using local
