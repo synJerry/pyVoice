@@ -174,8 +174,8 @@ class VoiceCloner:
                 
                 # Check if reference audio has sufficient duration
                 import librosa
-                ref_audio, _ = librosa.load(reference_audio, sr=None)
-                duration = len(ref_audio) / 16000  # Assuming 16kHz
+                ref_audio, ref_sr = librosa.load(reference_audio, sr=None)
+                duration = len(ref_audio) / ref_sr  # Use actual sample rate
                 
                 if duration < 3.0:  # Need at least 3 seconds for good voice cloning
                     print(f"Warning: Reference audio is only {duration:.1f}s. Voice cloning may be poor quality.")
@@ -350,7 +350,7 @@ class VoiceCloner:
         return output_file
 
     def batch_clone_voices(self, text: str, reference_audios: List[str], 
-                          output_dir: str, language: str = "en", output_format: str = "wav") -> List[str]:
+                          output_dir: str, language: str = "en", output_format: str = "wav", target_output_sr: int = None) -> List[str]:
         """
         Clone multiple voices with the same text, handling long text by chunking.
         
@@ -360,6 +360,7 @@ class VoiceCloner:
             output_dir: Output directory
             language: Language code
             output_format: Output audio format ("wav" or "mp3")
+            target_output_sr: Target output sample rate (if None, uses TTS model's rate)
             
         Returns:
             List of generated audio file paths
@@ -412,6 +413,11 @@ class VoiceCloner:
                 except OSError:
                     pass
             
+            # Resample to target output sample rate if specified
+            if target_output_sr is not None:
+                print(f"Resampling output to {target_output_sr}Hz")
+                self._resample_audio_file(wav_output_file, target_output_sr)
+            
             # Convert to MP3 if requested
             if output_format == "mp3":
                 from .audio_processor import AudioProcessor
@@ -424,6 +430,36 @@ class VoiceCloner:
             output_files.append(final_output_file)
         
         return output_files
+    
+    def _resample_audio_file(self, audio_file: str, target_sr: int) -> None:
+        """
+        Resample audio file to target sample rate in-place.
+        
+        Args:
+            audio_file: Path to audio file to resample
+            target_sr: Target sample rate
+        """
+        try:
+            # Load audio at original sample rate
+            audio, orig_sr = sf.read(audio_file)
+            
+            print(f"Current file sample rate: {orig_sr}Hz, target: {target_sr}Hz")
+            
+            # Skip if already at target sample rate
+            if orig_sr == target_sr:
+                print(f"File already at target sample rate {target_sr}Hz, skipping resample")
+                return
+            
+            # Resample
+            import librosa
+            resampled_audio = librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
+            
+            # Write back to same file
+            sf.write(audio_file, resampled_audio, target_sr, subtype='PCM_16')
+            print(f"Successfully resampled {audio_file} from {orig_sr}Hz to {target_sr}Hz")
+            
+        except Exception as e:
+            print(f"Warning: Could not resample {audio_file}: {e}")
     
     def save_voice_models(self, reference_audios: List[str], model_dir: str) -> Dict[str, str]:
         """
@@ -502,7 +538,7 @@ class VoiceCloner:
         return voice_models
     
     def generate_from_models(self, text: str, voice_models: Dict[str, str], 
-                           output_dir: str, language: str = "en", output_format: str = "wav") -> List[str]:
+                           output_dir: str, language: str = "en", output_format: str = "wav", target_output_sr: int = None) -> List[str]:
         """
         Generate speech using saved voice models, handling long text by chunking.
         
@@ -512,6 +548,7 @@ class VoiceCloner:
             output_dir: Output directory
             language: Language code
             output_format: Output audio format ("wav" or "mp3")
+            target_output_sr: Target output sample rate (if None, uses TTS model's rate)
             
         Returns:
             List of generated audio file paths
@@ -555,6 +592,11 @@ class VoiceCloner:
                     shutil.rmtree(temp_dir)
                 except OSError:
                     pass
+            
+            # Resample to target output sample rate if specified
+            if target_output_sr is not None:
+                print(f"Resampling output to {target_output_sr}Hz")
+                self._resample_audio_file(wav_output_file, target_output_sr)
             
             # Convert to MP3 if requested
             if output_format == "mp3":

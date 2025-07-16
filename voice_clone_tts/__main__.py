@@ -45,6 +45,8 @@ def main():
                        help="Use AWS Transcribe JSON output for speaker diarization (overrides --method)")
     parser.add_argument("--output-format", choices=["wav", "mp3"], default="wav",
                        help="Output audio format (default: wav)")
+    parser.add_argument("--use-16khz", action="store_true",
+                       help="Force 16kHz sample rate (default: use input file's sample rate)")
     
     args = parser.parse_args()
     
@@ -133,18 +135,49 @@ def main():
         
         # Generate speech using loaded models
         synthesis_dir = os.path.join(args.output_dir, "synthesis")
+        
+        # For loaded models, we don't have original sample rate, so use 16kHz unless user wants higher
+        if args.use_16khz:
+            target_output_sr = None  # Stay at 16kHz
+            print("Using 16kHz for loaded models")
+        else:
+            # Default to 22050 Hz for better quality when using loaded models
+            target_output_sr = 22050
+            print("Will upsample loaded models output to 22050Hz for better quality")
+        
         output_files = cloner.generate_from_models(
             args.text, 
             voice_models, 
             synthesis_dir,
-            output_format=args.output_format
+            output_format=args.output_format,
+            target_output_sr=target_output_sr
         )
     else:
         # Full pipeline: preprocess, separate, clone
+        # Step 1: Get original sample rate for final output quality
+        import librosa
+        _, orig_sr = librosa.load(args.audio_file, sr=None, duration=0.1)  # Just load a small chunk to get SR
+        
+        print(f"Detected original sample rate: {orig_sr}Hz")
+        
+        # Use 16kHz for processing (TTS models expect this) but remember original SR
+        processing_sr = 16000  # Always use 16kHz for processing
+        output_sr = 16000 if args.use_16khz else orig_sr  # Use original SR for final output unless forced
+        
+        print(f"Processing at {processing_sr}Hz, output at {output_sr}Hz")
+        
+        # Only resample if output SR is different from processing SR
+        target_output_sr = output_sr if output_sr != processing_sr else None
+        if target_output_sr:
+            print(f"Will resample final output to {target_output_sr}Hz")
+        else:
+            print("No resampling needed - output will remain at 16kHz")
+        
         # Step 1: Preprocess audio (handles format conversion)
         print("Preprocessing audio...")
         preprocessed_audio = AudioProcessor.preprocess_audio(
             args.audio_file, 
+            target_sr=processing_sr,
             output_file=os.path.join(args.output_dir, "preprocessed.wav"),
             auto_convert=True,
             filesystem_manager=fs_manager
@@ -173,12 +206,12 @@ def main():
                 print("  This uses state-of-the-art neural models instead of basic clustering")
             
             print(f"Attempting to separate into {args.num_speakers} speaker(s)...")
-            speaker_audio = separator.separate_speakers(preprocessed_audio, num_speakers=args.num_speakers)
+            speaker_audio = separator.separate_speakers(preprocessed_audio, num_speakers=args.num_speakers, target_sr=processing_sr)
         
         # Show detailed speaker information if requested
         if args.show_speaker_info:
             print("\n📊 Detailed Speaker Analysis:")
-            speaker_info = separator.get_speaker_info(speaker_audio, sr=16000)
+            speaker_info = separator.get_speaker_info(speaker_audio, sr=processing_sr)
             for speaker_id, info in speaker_info.items():
                 print(f"\n{speaker_id}:")
                 print(f"  Duration: {info['duration_seconds']:.2f} seconds")
@@ -188,7 +221,7 @@ def main():
         
         # Save separated audio
         speaker_dir = os.path.join(args.output_dir, "speakers")
-        separator.save_speaker_audio(speaker_audio, speaker_dir)
+        separator.save_speaker_audio(speaker_audio, speaker_dir, sr=processing_sr)
         
         # Get reference audio files
         reference_files = []
@@ -210,7 +243,8 @@ def main():
             args.text, 
             reference_files, 
             synthesis_dir,
-            output_format=args.output_format
+            output_format=args.output_format,
+            target_output_sr=target_output_sr
         )
     
     print(f"Voice cloning complete! Generated files:")

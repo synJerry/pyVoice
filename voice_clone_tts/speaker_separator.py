@@ -91,30 +91,31 @@ class SpeakerSeparator:
             print(f"Warning: Could not load pyannote models: {e}")
             print("You may need to accept user agreement at https://huggingface.co/pyannote/speaker-diarization-3.1")
     
-    def separate_speakers(self, audio_file: str, num_speakers: int = 2) -> Dict[str, np.ndarray]:
+    def separate_speakers(self, audio_file: str, num_speakers: int = 2, target_sr: int = 16000) -> Dict[str, np.ndarray]:
         """
         Separate speakers from audio file.
         
         Args:
             audio_file: Path to audio file
             num_speakers: Expected number of speakers
+            target_sr: Target sample rate for processing
             
         Returns:
             Dictionary mapping speaker IDs to audio arrays
         """
         if self.method == "huggingface":
-            speaker_audio = self._separate_speakers_hf(audio_file, num_speakers)
+            speaker_audio = self._separate_speakers_hf(audio_file, num_speakers, target_sr)
         elif self.method == "aws":
-            speaker_audio = self._separate_speakers_aws(audio_file)
+            speaker_audio = self._separate_speakers_aws(audio_file, target_sr)
         else:
-            speaker_audio = self._separate_speakers_local(audio_file, num_speakers)
+            speaker_audio = self._separate_speakers_local(audio_file, num_speakers, target_sr)
         
         # Report detected speakers with detailed information
         detected_count = len(speaker_audio)
         print(f"🎤 Detected {detected_count} speaker(s) in audio:")
         
         # Get detailed speaker information
-        speaker_info = self.get_speaker_info(speaker_audio, sr=16000)
+        speaker_info = self.get_speaker_info(speaker_audio, sr=target_sr)
         
         for speaker_id, info in speaker_info.items():
             duration = info["duration_seconds"]
@@ -124,7 +125,7 @@ class SpeakerSeparator:
         
         return speaker_audio
     
-    def _separate_speakers_hf(self, audio_file: str, num_speakers: int) -> Dict[str, np.ndarray]:
+    def _separate_speakers_hf(self, audio_file: str, num_speakers: int, target_sr: int = 16000) -> Dict[str, np.ndarray]:
         """HuggingFace-based speaker separation."""
         if self.pipeline is None:
             raise RuntimeError("Speaker diarization pipeline not available")
@@ -133,7 +134,7 @@ class SpeakerSeparator:
         diarization = self.pipeline(audio_file, num_speakers=num_speakers)
         
         # Load audio
-        audio, sr = librosa.load(audio_file, sr=16000)
+        audio, sr = librosa.load(audio_file, sr=target_sr)
         
         # Extract speaker segments
         speaker_audio = {}
@@ -157,7 +158,7 @@ class SpeakerSeparator:
         
         return speaker_audio
     
-    def _separate_speakers_aws(self, audio_file: str) -> Dict[str, np.ndarray]:
+    def _separate_speakers_aws(self, audio_file: str, target_sr: int = 16000) -> Dict[str, np.ndarray]:
         """
         AWS Transcribe-based speaker separation using diarization timestamps.
         """
@@ -179,7 +180,7 @@ class SpeakerSeparator:
                 raise ValueError("No speaker segments found in AWS Transcribe JSON")
             
             # Load audio
-            audio, sr = librosa.load(audio_file, sr=16000)
+            audio, sr = librosa.load(audio_file, sr=target_sr)
             
             # Group segments by speaker
             speaker_segments = {}
@@ -233,14 +234,14 @@ class SpeakerSeparator:
         except Exception as e:
             raise ValueError(f"Error processing AWS Transcribe file: {e}")
     
-    def _separate_speakers_local(self, audio_file: str, num_speakers: int) -> Dict[str, np.ndarray]:
+    def _separate_speakers_local(self, audio_file: str, num_speakers: int, target_sr: int = 16000) -> Dict[str, np.ndarray]:
         """
         Improved local CPU-based speaker separation using enhanced feature extraction.
         """
         print("Using enhanced local speaker separation with improved features")
         
         # Load audio with better preprocessing
-        audio, sr = librosa.load(audio_file, sr=16000)
+        audio, sr = librosa.load(audio_file, sr=target_sr)
         
         # Apply noise reduction and normalization
         audio = librosa.effects.preemphasis(audio)

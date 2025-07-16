@@ -97,6 +97,12 @@ python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-c
 # Load models and generate MP3 output
 python -m voice_clone_tts --load-models output/voice_models --text "Your text here" --backend coqui --use-cpu --output-format mp3
 
+# Keep 16kHz sample rate for compatibility with older models
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu --use-16khz
+
+# Upsample to original sample rate for better quality (default behavior)
+python -m voice_clone_tts input_audio.wav --method local --backend coqui --use-cpu
+
 # Note: Use WAV files for best results. WebM/MP4 files require ffmpeg for conversion
 ```
 
@@ -144,7 +150,7 @@ All backends have fallback mechanisms that generate silent audio files when TTS 
 - `setup.py`: Legacy setup file (pyproject.toml is preferred)
 - `output/`: Default directory for generated audio files and voice models
 - `transcript.txt`: Optional text file for custom synthesis text (use with `--use-transcript`)
-- Audio files are processed in WAV format at 16kHz sample rate
+- Audio files are processed in WAV format at 16kHz internally, with output upsampled to original sample rate (default) or kept at 16kHz (with --use-16khz flag)
 - Generated files follow naming convention: `speaker_N_synthesis.wav`
 
 ## Text Input Options

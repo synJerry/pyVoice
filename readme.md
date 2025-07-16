@@ -47,6 +47,7 @@ python -m voice_clone_tts "Single.wav" --num-speakers 1 --method local --backend
 python -m voice_clone_tts "Syn.wav" --aws-transcribe "transcribe.json" --backend coqui --use-cpu --clean
 python -m voice_clone_tts "Syn.wav" --aws-transcribe "transcribe.json" --backend coqui --use-cpu --use-transcript --clean
 python -m voice_clone_tts "Syn.wav" --aws-transcribe "transcribe.json" --backend coqui --use-cpu --use-transcript --output-format mp3 --clean
+python -m voice_clone_tts "Syn.wav" --aws-transcribe "transcribe.json" --backend coqui --use-cpu --use-transcript --output-format mp3 --use-16khz --clean
 #--save-models
 ```
 
