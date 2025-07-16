@@ -1,5 +1,6 @@
 ## Windows Setup (assumes user installed Python)
 
+### Windows Powershell Setup
 ```powershell
 pip install uv
 # From this local dir
@@ -11,6 +12,29 @@ uv pip install torch torchvision torchaudio --index-url https://download.pytorch
 # Use a TTS fork with Windows binary wheels
 #uv pip install coqui-tts
 uv pip install -r .\pyproject.toml --all-extras
+```
+
+#### Optional WSL Setup
+Claude Code currently only supports Linux so we can set it up in WSL to access the same Windows Folder. This is pretty ugly and leads to redundant packages and ML models being installed. Better current option (until Claude Code officially supports Windows) is probably to run the whole repo and commands in a Linux container and use Vscode Containers to access.
+
+Launch WSL `wsl -d Ubuntu-24.04` then run Linux commands
+```bash
+# Fix Windows PATH showing up in Linux
+echo $PATH | tr ':' '\n' | grep -v "/mnt/c" | tr '\n' ':' | sed 's/:$//'
+# Create python symlink if needed
+sudo ln -s /usr/bin/python3 /usr/bin/python
+sudo apt install -y python3-pip
+# Tried pathing python/pip to install uv but easier (much uglier) was to just install uv directly
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Reload your shell or add to PATH
+export PATH="$HOME/.local/bin:$PATH"
+source ~/.bashrc
+# Create our WSL .venv with a different directory name
+uv venv .venv-linux -p 3.11.7
+source .venv-linux/bin/activate # May need to run this on subsequent WSL runs before running 'claude'
+# This might get big because we have similar libraries as Windows (TODO: See 
+#    if the ML libraries can be linked to keep size down)
+uv pip install -r ./pyproject.toml --all-extras
 ```
 
 Run
