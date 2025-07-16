@@ -3,6 +3,7 @@ import os
 from .speaker_separator import SpeakerSeparator
 from .voice_cloner import VoiceCloner
 from .audio_processor import AudioProcessor
+from .filesystem_manager import FileSystemManager
 
 
 # Sample text - replace with actual lyrics
@@ -89,8 +90,11 @@ def main():
         warnings.filterwarnings("ignore", message=".*speechbrain.inference.*")
         warnings.filterwarnings("ignore", category=UserWarning, module="speechbrain")
     
-    # Handle clean flag
-    if args.clean and os.path.exists(args.output_dir):
+    # Initialize filesystem manager
+    fs_manager = FileSystemManager()
+    
+    # Handle clean flag  
+    if args.clean and fs_manager.directory_exists(args.output_dir):
         print(f"Cleaning files in output directory: {args.output_dir}")
         import shutil
         import glob
@@ -104,16 +108,19 @@ def main():
                     print(f"Deleted: {file_path}")
                 except OSError as e:
                     print(f"Warning: Could not delete {file_path}: {e}")
+        
+        # Invalidate cache after cleaning
+        fs_manager.invalidate_cache()
     
     # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
+    fs_manager.ensure_directory(args.output_dir)
     
     # Set default models directory within output directory
     if args.models_dir is None:
         args.models_dir = os.path.join(args.output_dir, "voice_models")
     
-    # Initialize voice cloner
-    cloner = VoiceCloner(backend=args.backend, use_cpu=args.use_cpu)
+    # Initialize voice cloner with filesystem manager
+    cloner = VoiceCloner(backend=args.backend, use_cpu=args.use_cpu, filesystem_manager=fs_manager)
     
     # Check if loading existing models
     if args.load_models:
@@ -139,7 +146,8 @@ def main():
         preprocessed_audio = AudioProcessor.preprocess_audio(
             args.audio_file, 
             output_file=os.path.join(args.output_dir, "preprocessed.wav"),
-            auto_convert=True
+            auto_convert=True,
+            filesystem_manager=fs_manager
         )
         
         # Step 2: Separate speakers
@@ -189,8 +197,7 @@ def main():
             reference_files.append(ref_file)
         
         # Save voice models if requested or if no model files exist
-        model_files_exist = (os.path.exists(args.models_dir) and 
-                           any(f.endswith("_metadata.json") for f in os.listdir(args.models_dir)))
+        model_files_exist = fs_manager.has_model_files(args.models_dir)
         
         if args.save_models or not model_files_exist:
             print(f"Saving voice models to {args.models_dir}...")
